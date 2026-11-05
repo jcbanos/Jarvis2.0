@@ -1,0 +1,15 @@
+<type>[optional scope]: <subject>
+
+Why: <explain why was it changed>
+What: <explain what changed here>
+
+# Commit Guidelines:
+# - Title must be 20-80 characters and capitalized
+# - Every non-empty line must be <= 80 characters
+# - If text exceeds 80 chars, wrap: use a newline and continue on the next line
+#   (extra bullets under Why:/What: are fine; do not use one long line)
+# - Must include "Why:" section explaining reason
+# - Must include "What:" section explaining changes
+# - Don't prefix the title with "Type:"
+# - Use imperative mood (e.g., "Fix" not "Fixed")
+# - At least 3 lines total (title + Why + What)
