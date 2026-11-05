@@ -86,7 +86,8 @@ From the `Jarvis2.0` folder on your Mac:
 ```bash
 # 1. Copy changes across (only what changed is sent)
 rsync -a --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
-      --exclude '*.sqlite3' --exclude '.DS_Store' ./ jcbanos@jarvis.tail867051.ts.net:~/jarvis/
+      --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' \
+      ./ jcbanos@jarvis.tail867051.ts.net:~/jarvis/
 
 # 2. Only if requirements.txt changed: install the new libraries
 ssh jcbanos@jarvis.tail867051.ts.net 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
