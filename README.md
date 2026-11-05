@@ -68,13 +68,13 @@ def get_room_temperature(room: str) -> str:
 
 ## Day-to-day commands
 
-Run these in Terminal on your Mac. If `jarvis.local` doesn't work, use the Pi's IP address instead, which was `192.168.1.170`.
+Run these in Terminal on your Mac. They reach the Pi through **Tailscale**, so they work from anywhere, as long as the Tailscale app on your Mac is connected to the same account as the Pi. At home, `jarvis.local` may also work, but it's unreliable.
 
 | What | Command |
 |---|---|
-| Is Jarvis running? | `ssh jcbanos@jarvis.local 'systemctl status jarvis'` |
-| Watch the log live (Ctrl+C to stop) | `ssh jcbanos@jarvis.local 'journalctl -u jarvis -f'` |
-| Token use per question | `ssh jcbanos@jarvis.local 'journalctl -u jarvis \| grep "tokens used"'` |
+| Is Jarvis running? | `ssh jcbanos@jarvis.tail867051.ts.net 'systemctl status jarvis'` |
+| Watch the log live (Ctrl+C to stop) | `ssh jcbanos@jarvis.tail867051.ts.net 'journalctl -u jarvis -f'` |
+| Token use per question | `ssh jcbanos@jarvis.tail867051.ts.net 'journalctl -u jarvis \| grep "tokens used"'` |
 | Is it reachable from the internet? | Open `https://jarvis.tail867051.ts.net/health` and look for `{"status":"ok"}` |
 | Run the tests on your Mac | `.venv/bin/pytest` |
 | Ask a question without the ring | `.venv/bin/python scripts/send_test_request.py "your question" --url https://jarvis.tail867051.ts.net/webhook` |
@@ -86,13 +86,13 @@ From the `Jarvis2.0` folder on your Mac:
 ```bash
 # 1. Copy changes across (only what changed is sent)
 rsync -a --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
-      --exclude '*.sqlite3' --exclude '.DS_Store' ./ jcbanos@jarvis.local:~/jarvis/
+      --exclude '*.sqlite3' --exclude '.DS_Store' ./ jcbanos@jarvis.tail867051.ts.net:~/jarvis/
 
 # 2. Only if requirements.txt changed: install the new libraries
-ssh jcbanos@jarvis.local 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
+ssh jcbanos@jarvis.tail867051.ts.net 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
 
 # 3. Restart Jarvis (asks for your Pi password)
-ssh -t jcbanos@jarvis.local 'sudo systemctl restart jarvis'
+ssh -t jcbanos@jarvis.tail867051.ts.net 'sudo systemctl restart jarvis'
 ```
 
 ## Settings
@@ -115,6 +115,9 @@ ssh -t jcbanos@jarvis.local 'sudo systemctl restart jarvis'
 | URL | `https://jarvis.tail867051.ts.net/webhook` |
 | Payload | **Transcription only** |
 | Signing | On, with the `WEBHOOK_SECRET` value |
+| Ring Button | Don't send this gesture to the **Index agent**, otherwise Pebble's built-in assistant answers as well as Jarvis. The webhook still fires |
+
+Recordings made while the phone is out of range are stored on the ring and sent when it reconnects. Pebble signs them when sending, so they pass the 5-minute check.
 
 ## Costs
 
@@ -141,8 +144,9 @@ Even a question with no search sends about 6,000 tokens, because describing the 
 | Log says `empty transcription ignored` | The webhook payload isn't set to **Transcription only** |
 | Log says `rejected request: signature does not match` | The secret in the Pebble app differs from `WEBHOOK_SECRET` |
 | Log says `timestamp outside the 5-minute window` | The phone's or Pi's clock is wrong |
-| You get two answers | Pebble's built-in assistant is also handling the gesture. Check **Ring Button** in the Pebble app |
+| You get two answers | Pebble's built-in assistant is also handling the gesture. In the Pebble app's **Ring Button** settings, stop sending Double click & hold to the Index agent |
 | "Couldn't answer: …" | Claude or the network failed. The log has the details (`journalctl -u jarvis`) |
 | Nothing arrives at all | Check `/health` in a browser, then the log, then that the ntfy app is subscribed to the right topic |
 | Answer on phone but not watch | Garmin Connect needs **Notification access**, and ntfy must be on in its app list |
-| `jarvis.local` not found | Use the Pi's IP address, or install Tailscale on your Mac |
+| Can't reach the Pi from the Mac | Check the Tailscale app on the Mac is connected, then use `jarvis.tail867051.ts.net` |
+| Nothing on the Garmin | It may be in sleep mode or Do Not Disturb. Answers still arrive on the phone |
