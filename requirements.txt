@@ -1,0 +1,18 @@
+# Versions are pinned so the Mac and the Pi run the same code. LangChain changes
+# often, so upgrade on purpose rather than by accident.
+
+# --- The agent ---
+langchain==1.4.9            # create_agent: the loop connecting the model and tools
+langchain-anthropic==1.7.10 # ChatAnthropic: LangChain's connection to Claude
+
+# --- Receiving the webhook from the Pebble app ---
+fastapi==0.162.0            # defines the web endpoints, such as POST /webhook
+uvicorn==0.54.0             # the server that runs FastAPI and listens for requests
+python-multipart==0.0.33    # lets FastAPI read the form format the Pebble app sends
+
+# --- Sending the answer and loading settings ---
+httpx==0.28.1               # makes the HTTP call to ntfy
+python-dotenv==1.2.4        # loads secrets from the .env file
+
+# --- Development only ---
+pytest==9.2.0               # runs our automated tests

@@ -1,0 +1,42 @@
+# systemd service for Jarvis on the Raspberry Pi.
+#
+# Install (needs your Pi password):
+#   sudo cp ~/jarvis/deploy/jarvis.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis
+#
+# Useful commands:
+#   systemctl status jarvis        is it running?
+#   journalctl -u jarvis -f        watch its log live (Ctrl+C to stop)
+#   sudo systemctl restart jarvis  restart after updating the code
+
+[Unit]
+Description=Jarvis voice agent (Pebble Index 01 webhook)
+# Wait until the Pi is connected to the network before starting.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Run as your normal user, never as root.
+User=jcbanos
+WorkingDirectory=/home/jcbanos/jarvis
+# 127.0.0.1 means only programs on the Pi itself can connect. Tailscale Funnel
+# (also on the Pi) passes requests from the internet through to this port.
+ExecStart=/home/jcbanos/jarvis/.venv/bin/uvicorn jarvis.app:app --host 127.0.0.1 --port 8000
+
+# If Jarvis crashes, wait 5 seconds and start it again.
+Restart=on-failure
+RestartSec=5
+
+# Safety locks: Jarvis can't gain extra privileges, sees the system and other
+# home folders as read-only, and can write only inside its own folder (where
+# its delivery record lives).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/jcbanos/jarvis
+
+[Install]
+# Start on every boot.
+WantedBy=multi-user.target
