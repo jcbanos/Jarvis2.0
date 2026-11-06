@@ -107,6 +107,7 @@ Tools run in one of two places. **Server tools**, like web search, run on Anthro
 ```python
 from langchain.tools import tool
 
+
 @tool
 def get_room_temperature(room: str) -> str:
     """Get the current temperature of a room in the user's home."""

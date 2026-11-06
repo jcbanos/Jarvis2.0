@@ -36,6 +36,7 @@ def use_fake(monkeypatch):
         fake = FakeAgent(*replies)
         monkeypatch.setattr(agent_module, "_build_agent", lambda: fake)
         return fake
+
     return install
 
 

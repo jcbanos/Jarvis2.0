@@ -94,9 +94,7 @@ def answer(question: str) -> str:
     config = {"recursion_limit": RECURSION_LIMIT}
 
     try:
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": question}]}, config=config
-        )
+        result = agent.invoke({"messages": [{"role": "user", "content": question}]}, config=config)
 
         # A long server-side search can stop partway through with "pause_turn".
         # LangChain treats that as finished, so we resume by sending the
