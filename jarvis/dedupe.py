@@ -10,6 +10,8 @@ reboots. It's built into Python, so there's nothing extra to install.
 
 import sqlite3
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 # Pebble never resends anything this old, so older IDs can be forgotten.
@@ -26,11 +28,17 @@ class DeliveryLog:
                 " received_at REAL NOT NULL)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         # A fresh connection per call keeps things simple and safe when several
         # requests arrive at once. Each runs in its own thread, and SQLite
         # connections shouldn't be shared between threads.
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:  # saves the changes if everything worked, undoes them if not
+                yield db
+        finally:
+            db.close()  # "with db" alone doesn't close the connection
 
     def first_time(self, delivery_id: str, now: float | None = None) -> bool:
         """Record `delivery_id`. True if it's new, False if already handled.
