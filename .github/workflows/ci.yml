@@ -106,6 +106,26 @@ jobs:
       - name: Check libraries for known security holes
         run: pip-audit -r requirements.txt --progress-spinner off
 
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      # All of requirements.txt, not just mypy: mypy reads the libraries' own
+      # type hints, and its pydantic plugin needs pydantic.
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      - name: Check types
+        run: mypy   # files and settings are in mypy.ini
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -130,7 +150,7 @@ jobs:
   # checks have finished. Add each new check's job ID to "needs".
   notify:
     name: Notify
-    needs: [lint, commits, secrets, audit, test]
+    needs: [lint, commits, secrets, audit, types, test]
     # Run whether the checks passed or failed, but not when a newer push
     # cancelled this run. Dependabot's runs can't read secrets, so skip them.
     if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
