@@ -140,11 +140,26 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 | Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml` | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting) |
 | Commits | Every commit on the branch that isn't on `main` follows [templates/git/commit.txt](templates/git/commit.txt). Merge commits and `main` itself are skipped | `.venv/bin/python scripts/check_commits.py` |
 | Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
+| Audit | pip-audit checks the libraries in `requirements.txt`, and the ones they bring in, for known security holes | `.venv/bin/pip-audit -r requirements.txt` |
 | Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
 
 **If the Secrets check fails, the secret is already on GitHub.** Removing it in a new commit isn't enough, because
 it's still in the history. Replace it first (see [Security](#security) for each secret), then remove it from the code.
 If it's a fake test value, add it to `.gitleaks.toml` instead.
+
+**If the Audit check fails,** its log names the library, the problem and the first version that fixes it. Raise that
+version in `requirements.txt`, check the tests pass, and update the Pi.
+
+**Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)) opens a PR every Monday when there are newer
+versions of the libraries or the GitHub Actions, one PR for each. CI tests it like any other PR. Merging it still
+needs the usual Pi update. Its PRs skip the Commits check and send no ntfy message.
+
+To check exactly what's installed on the Pi, including libraries that aren't pinned:
+
+```bash
+ssh jcbanos@jarvis.tail867051.ts.net '~/jarvis/.venv/bin/pip freeze' > /tmp/pi-freeze.txt
+.venv/bin/pip-audit -r /tmp/pi-freeze.txt --no-deps --disable-pip
+```
 
 When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,
 the commit, and any failed checks. Tap the message to open the run. CI uses its own topic, separate from Jarvis's

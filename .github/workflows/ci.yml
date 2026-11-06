@@ -85,6 +85,27 @@ jobs:
       - name: Scan for secrets
         run: ./gitleaks git --redact --verbose --no-banner .
 
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      # pip-audit at the version pinned in requirements.txt
+      - name: Install pip-audit
+        run: pip install "$(grep '^pip-audit==' requirements.txt | cut -d' ' -f1)"
+
+      # Checks every library in requirements.txt, and the libraries they bring
+      # in, against public databases of known security holes.
+      - name: Check libraries for known security holes
+        run: pip-audit -r requirements.txt --progress-spinner off
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -109,7 +130,7 @@ jobs:
   # checks have finished. Add each new check's job ID to "needs".
   notify:
     name: Notify
-    needs: [lint, commits, secrets, test]
+    needs: [lint, commits, secrets, audit, test]
     # Run whether the checks passed or failed, but not when a newer push
     # cancelled this run. Dependabot's runs can't read secrets, so skip them.
     if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
