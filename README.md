@@ -167,7 +167,9 @@ the commit, and any failed checks. Tap the message to open the run. CI uses its 
 answers, stored as the GitHub Actions secret `NTFY_TOPIC` (Settings → Secrets and variables → Actions). To move to a
 new topic, subscribe to it in the ntfy app and run `gh secret set NTFY_TOPIC`.
 
-Each run takes about a minute, well within the 2,000 free Actions minutes a private repo gets each month.
+A run finishes in under a minute, because the checks run side by side. GitHub rounds **each check** up to a whole
+minute when counting a private repo's 2,000 free minutes a month, so every push uses about 7 of them, roughly 280
+pushes a month. See how many are used in GitHub's **Settings → Billing and plans** for your account.
 
 ### Updating the Pi after changing code
 
