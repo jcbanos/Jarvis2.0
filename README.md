@@ -24,6 +24,55 @@ Ring ──Bluetooth──▶ Pebble app (phone) ──HTTPS──▶ jarvis.tai
 - **Claude does the thinking and searching** on Anthropic's servers. The Pi mostly waits on the network, which is why a small computer is plenty.
 - **ntfy** delivers the answer as a phone notification, which Garmin Connect forwards to the watch.
 
+### Where everything runs
+
+```mermaid
+flowchart TB
+    subgraph body["On you"]
+        Ring["Pebble Index 01 ring<br/>records your voice"]
+        Watch["Garmin watch"]
+    end
+
+    subgraph phone["Android phone"]
+        PebbleApp["Pebble app<br/>speech to text, signs the request"]
+        NtfyApp["ntfy app"]
+        GarminConnect["Garmin Connect<br/>forwards ntfy only"]
+    end
+
+    Funnel["Tailscale Funnel<br/>jarvis.tail867051.ts.net"]
+
+    subgraph pi["Raspberry Pi 5: systemd service 'jarvis'"]
+        App["app.py<br/>/webhook and /health"]
+        Security["security.py<br/>check signature and age"]
+        Dedupe[("dedupe.py<br/>deliveries.sqlite3")]
+        Agent["agent.py<br/>LangChain agent"]
+        Notify["notify.py"]
+    end
+
+    subgraph cloud["Internet services"]
+        Claude["Anthropic API<br/>Sonnet 5.5 + web search"]
+        Ntfy["ntfy.sh"]
+    end
+
+    Mac["Your Mac<br/>ssh jarvis, rsync updates"]
+
+    Ring -->|Bluetooth| PebbleApp
+    PebbleApp -->|"HTTPS POST /webhook"| Funnel
+    Funnel --> App
+    App --> Security
+    App --> Dedupe
+    App -->|"in the background"| Agent
+    Agent <-->|"API key"| Claude
+    Agent -->|answer| Notify
+    Notify --> Ntfy
+    Ntfy --> NtfyApp
+    NtfyApp --> GarminConnect
+    GarminConnect -->|Bluetooth| Watch
+    Mac -.->|"Tailscale, private"| pi
+```
+
+The solid arrows are one question's journey. The dotted arrow is how you maintain the Pi. Only `/webhook` and `/health` are reachable from the internet. The Mac's SSH access goes over Tailscale's private network and isn't public.
+
 ## The code
 
 | File | Job |
