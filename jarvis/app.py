@@ -59,7 +59,7 @@ async def webhook(request: Request, background: BackgroundTasks):
         # Logged so you can diagnose setup mistakes, but the sender only learns
         # "unauthorized", which gives an attacker nothing to work with.
         log.warning("rejected request: %s", problem)
-        raise HTTPException(status_code=401, detail="unauthorized")
+        raise HTTPException(status_code=401, detail="unauthorized") from None
 
     # From here on the request is genuine, so it's safe to parse.
     form = await request.form()

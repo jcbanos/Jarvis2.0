@@ -16,3 +16,4 @@ python-dotenv==1.2.4        # loads secrets from the .env file
 
 # --- Development only ---
 pytest==9.2.0               # runs our automated tests
+ruff==0.17.4                # checks code style and finds common mistakes

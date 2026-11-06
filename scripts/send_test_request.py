@@ -35,9 +35,10 @@ def main() -> None:
 
     load_dotenv()
     fields = {"transcription": args.question, "recordedAt": str(int(time.time() * 1000)), "client": "ring"}
-    body = "".join(
-        f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n' for k, v in fields.items()
-    ) + f"--{BOUNDARY}--\r\n"
+    body = (
+        "".join(f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n' for k, v in fields.items())
+        + f"--{BOUNDARY}--\r\n"
+    )
     body = body.encode("utf-8")
 
     ts, delivery, trigger = str(int(time.time())), args.delivery or str(uuid.uuid4()), "double-click-hold"

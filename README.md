@@ -107,6 +107,7 @@ Tools run in one of two places. **Server tools**, like web search, run on Anthro
 ```python
 from langchain.tools import tool
 
+
 @tool
 def get_room_temperature(room: str) -> str:
     """Get the current temperature of a room in the user's home."""
@@ -136,6 +137,7 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 
 | Check | What it does | Run it on your Mac first |
 |---|---|---|
+| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml` | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting) |
 | Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
 
 When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,

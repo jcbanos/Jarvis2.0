@@ -10,7 +10,7 @@ from jarvis.security import InvalidRequest, sign, signed_bytes, verify
 
 SECRET = "test-secret-that-is-at-least-32-bytes-long"
 NOW = 1_800_000_000  # a fixed "current time", so tests don't depend on the clock
-BODY = b"--boundary\r\nContent-Disposition: form-data; name=\"transcription\"\r\n\r\nhello\r\n--boundary--\r\n"
+BODY = b'--boundary\r\nContent-Disposition: form-data; name="transcription"\r\n\r\nhello\r\n--boundary--\r\n'
 
 
 def make_headers(body=BODY, secret=SECRET, timestamp=NOW, is_test=False, **overrides):

@@ -26,8 +26,7 @@ def multipart(fields: dict[str, str]) -> bytes:
     return ("".join(parts) + f"--{BOUNDARY}--\r\n").encode("utf-8")
 
 
-def pebble_request(transcription="What time is it in Tokyo?", delivery="delivery-1",
-                   is_test=False, secret=SECRET):
+def pebble_request(transcription="What time is it in Tokyo?", delivery="delivery-1", is_test=False, secret=SECRET):
     """Build (body, headers) the way the Pebble app should, signature included."""
     fields = {"transcription": transcription, "recordedAt": "1800000000000", "client": "ring"}
     if is_test:

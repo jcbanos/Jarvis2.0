@@ -1,0 +1,14 @@
+# Settings for Ruff, the tool that checks Python style and finds common mistakes.
+# CI runs `ruff check .` and `ruff format --check .` on every push.
+
+target-version = "py314"  # the Pi and the Mac run Python 3.14
+line-length = 120
+
+[lint]
+select = [
+    "E",   # pycodestyle: basic style errors
+    "F",   # pyflakes: unused imports, undefined names
+    "I",   # isort: imports in a consistent order
+    "B",   # bugbear: patterns that are often bugs
+    "UP",  # pyupgrade: use modern Python syntax
+]
