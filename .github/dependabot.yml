@@ -1,0 +1,30 @@
+# Dependabot opens PRs that update the pinned libraries and GitHub Actions.
+# CI tests each one, so you only merge updates that pass. requirements.txt
+# says to upgrade on purpose. Merging a Dependabot PR is that choice.
+#
+# Dependabot writes its own commit messages, so the Commits check skips its
+# PRs. Its runs can't read secrets, so they don't send ntfy messages either.
+version: 2
+updates:
+  - package-ecosystem: pip          # requirements.txt
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    # One PR a week with every library update, instead of one PR per library.
+    groups:
+      python-libraries:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions   # the actions used in .github/workflows
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    groups:
+      github-actions:
+        patterns: ["*"]
