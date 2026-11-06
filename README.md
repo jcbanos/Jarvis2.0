@@ -139,7 +139,12 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 |---|---|---|
 | Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml` | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting) |
 | Commits | Every commit on the branch that isn't on `main` follows [templates/git/commit.txt](templates/git/commit.txt). Merge commits and `main` itself are skipped | `.venv/bin/python scripts/check_commits.py` |
+| Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
 | Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
+
+**If the Secrets check fails, the secret is already on GitHub.** Removing it in a new commit isn't enough, because
+it's still in the history. Replace it first (see [Security](#security) for each secret), then remove it from the code.
+If it's a fake test value, add it to `.gitleaks.toml` instead.
 
 When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,
 the commit, and any failed checks. Tap the message to open the run. CI uses its own topic, separate from Jarvis's

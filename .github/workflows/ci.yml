@@ -59,6 +59,32 @@ jobs:
       - name: Check commit messages
         run: python scripts/check_commits.py origin/main
 
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # From gitleaks_8.30.1_checksums.txt on the release page. Update both together.
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the whole history, since a secret in any old commit is still readable
+
+      # Download gitleaks and stop if it isn't exactly the published file.
+      - name: Install gitleaks
+        run: |
+          file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}"
+          echo "${GITLEAKS_SHA256}  ${file}" | sha256sum --check
+          tar -xzf "$file" gitleaks
+
+      # Settings and allowed test values are in .gitleaks.toml. --redact hides
+      # any secret it finds from the log.
+      - name: Scan for secrets
+        run: ./gitleaks git --redact --verbose --no-banner .
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -83,7 +109,7 @@ jobs:
   # checks have finished. Add each new check's job ID to "needs".
   notify:
     name: Notify
-    needs: [lint, commits, test]
+    needs: [lint, commits, secrets, test]
     # Run whether the checks passed or failed, but not when a newer push
     # cancelled this run. Dependabot's runs can't read secrets, so skip them.
     if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
