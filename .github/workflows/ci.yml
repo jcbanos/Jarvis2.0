@@ -37,3 +37,51 @@ jobs:
       # credit is used.
       - name: Run pytest
         run: pytest
+
+  # Sends the result to the phone (and the Garmin) through ntfy, once all the
+  # checks have finished. Add each new check's job ID to "needs".
+  notify:
+    name: Notify
+    needs: [test]
+    # Run whether the checks passed or failed, but not when a newer push
+    # cancelled this run. Dependabot's runs can't read secrets, so skip them.
+    if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send the result to ntfy
+        # Values from GitHub go in through env, never straight into the script,
+        # so a strangely named branch or commit can't run commands.
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}  # the separate jarvis-ci-… topic
+          RESULTS: ${{ toJSON(needs) }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then
+            echo "::warning::NTFY_TOPIC secret isn't set, so no message was sent"
+            exit 0
+          fi
+
+          # Every check that didn't succeed, for example "test (failure)"
+          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success")
+                                            | "\(.key) (\(.value.result))"' | paste -sd, - | sed 's/,/, /g')
+          title_line=$(printf '%s\n' "$COMMIT" | head -n 1)
+
+          if [ -z "$failed" ]; then
+            title="✅ CI passed: $BRANCH"
+            message="$title_line"
+            tag="white_check_mark"
+          else
+            title="❌ CI failed: $BRANCH"
+            message=$(printf '%s\nFailed: %s' "$title_line" "$failed")
+            tag="x"
+          fi
+
+          # ntfy's JSON format handles emoji and any characters in commit titles
+          jq -n --arg topic "$NTFY_TOPIC" --arg title "$title" --arg message "$message" \
+                --arg tag "$tag" --arg click "$RUN_URL" \
+                '{topic: $topic, title: $title, message: $message, tags: [$tag], click: $click}' \
+            | curl -sS --fail --max-time 15 -d @- https://ntfy.sh >/dev/null \
+            || echo "::warning::Couldn't reach ntfy, so no message was sent"

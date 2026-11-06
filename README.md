@@ -138,6 +138,11 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 |---|---|---|
 | Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
 
+When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,
+the commit, and any failed checks. Tap the message to open the run. CI uses its own topic, separate from Jarvis's
+answers, stored as the GitHub Actions secret `NTFY_TOPIC` (Settings → Secrets and variables → Actions). To move to a
+new topic, subscribe to it in the ntfy app and run `gh secret set NTFY_TOPIC`.
+
 Each run takes about a minute, well within the 2,000 free Actions minutes a private repo gets each month.
 
 ### Updating the Pi after changing code
