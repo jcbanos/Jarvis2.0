@@ -128,6 +128,18 @@ Run these in Terminal on your Mac. They reach the Pi through **Tailscale**, so t
 | Run the tests on your Mac | `.venv/bin/pytest` |
 | Ask a question without the ring | `.venv/bin/python scripts/send_test_request.py "your question" --url https://jarvis.tail867051.ts.net/webhook` |
 
+### Checks on every push
+
+GitHub runs these checks automatically on every push, to any branch. The setup is in
+[.github/workflows/ci.yml](.github/workflows/ci.yml). Results show at the bottom of the PR and in the repo's
+**Actions** tab. A red ✗ means don't merge yet. Click it to see which check failed and why.
+
+| Check | What it does | Run it on your Mac first |
+|---|---|---|
+| Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
+
+Each run takes about a minute, well within the 2,000 free Actions minutes a private repo gets each month.
+
 ### Updating the Pi after changing code
 
 From the `Jarvis2.0` folder on your Mac:

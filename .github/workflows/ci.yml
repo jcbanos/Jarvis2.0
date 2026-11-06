@@ -1,0 +1,39 @@
+# Checks that GitHub runs on every push, so problems show on the PR before
+# merging. Results appear in the repo's Actions tab and at the bottom of each PR.
+# Each check is its own job, and jobs run in parallel.
+name: CI
+
+# Every push, to any branch. A PR shows the results for its branch's latest
+# push. Also running on "pull_request" would run every check twice.
+on:
+  push:
+
+# If you push again before the last run finishes, cancel the old run. This saves
+# the free Actions minutes the private repo gets each month.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read   # the checks only read the code
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"   # same as the Pi and the Mac
+          cache: pip               # reuse downloaded libraries between runs
+
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      # The tests fake Claude and ntfy, so no secrets are needed and no API
+      # credit is used.
+      - name: Run pytest
+        run: pytest
