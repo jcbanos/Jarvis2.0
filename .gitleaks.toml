@@ -1,0 +1,11 @@
+# Settings for gitleaks, the secret scanner CI runs on every push.
+# It uses gitleaks's built-in rules, plus the exceptions below.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake webhook secret the tests sign requests with. Not a real secret"
+# Only this exact value is allowed, not whole files, so a real secret added to
+# the tests would still be caught.
+regexes = ['''test-secret-that-is-at-least-32-bytes-long''']
