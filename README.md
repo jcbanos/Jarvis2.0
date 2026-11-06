@@ -145,6 +145,32 @@ ssh jcbanos@jarvis.tail867051.ts.net 'cd ~/jarvis && .venv/bin/pip install -r re
 ssh -t jcbanos@jarvis.tail867051.ts.net 'sudo systemctl restart jarvis'
 ```
 
+### Python on the Pi
+
+Jarvis runs on **Python 3.14**, the same as the Mac. Debian on the Pi only ships 3.13, so 3.14 is installed with
+[uv](https://docs.astral.sh/uv/) in your user folder (`~/.local/share/uv/python/`), separate from the system Python.
+`apt upgrade` doesn't update it, so now and then run:
+
+```bash
+ssh jcbanos@jarvis.tail867051.ts.net '~/.local/bin/uv python upgrade 3.14'
+```
+
+The venv uses whatever 3.14 patch release uv has, so a restart picks up the upgrade.
+
+To rebuild the venv, for example when moving to a new Python version (Jarvis is down for about 30 seconds):
+
+```bash
+ssh -t jcbanos@jarvis.tail867051.ts.net 'set -e; cd ~/jarvis; sudo -v
+sudo systemctl stop jarvis
+mv .venv .venv-old
+~/.local/bin/uv venv --python 3.14 --seed .venv
+.venv/bin/pip install -q -r requirements.txt
+sudo systemctl start jarvis'
+```
+
+If it fails, put the old one back with `rm -rf .venv && mv .venv-old .venv` and restart. Don't rename a venv to
+`.venv`, because the programs inside it still point at the old folder name.
+
 ## Settings
 
 `.env` holds these. It's never copied into git, and on the Pi only your user can read it.
