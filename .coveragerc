@@ -1,0 +1,19 @@
+# Settings for coverage, which measures which lines the tests actually run.
+# CI runs `pytest --cov` and shows the report on the run's summary page.
+
+[run]
+source = jarvis, scripts
+# Count both outcomes of every "if", not just whether each line ran.
+branch = True
+# A manual tool you run against a live Jarvis. No test runs it.
+omit = scripts/send_test_request.py
+
+[report]
+# CI fails if the tests run less than this much of the code. It was 95% when
+# this was set, so there's room for small untested bits like error paths.
+fail_under = 90
+show_missing = True
+skip_empty = True
+# Code that only runs when you start a file by hand
+exclude_also =
+    if __name__ == .__main__.:

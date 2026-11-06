@@ -142,7 +142,7 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 | Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
 | Audit | pip-audit checks the libraries in `requirements.txt`, and the ones they bring in, for known security holes | `.venv/bin/pip-audit -r requirements.txt` |
 | Types | mypy checks the code matches its type hints, such as passing text where bytes are expected. Settings are in `mypy.ini` | `.venv/bin/mypy` |
-| Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
+| Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked. Also measures coverage, which lines the tests run, and fails below 90%. The table is on the run's summary page. Settings are in `.coveragerc` | `.venv/bin/pytest --cov` |
 
 **If the Secrets check fails, the secret is already on GitHub.** Removing it in a new commit isn't enough, because
 it's still in the history. Replace it first (see [Security](#security) for each secret), then remove it from the code.
@@ -176,7 +176,7 @@ From the `Jarvis2.0` folder on your Mac:
 ```bash
 # 1. Copy changes across (only what changed is sent)
 rsync -a --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
-      --exclude '.ruff_cache/' --exclude '.mypy_cache/' \
+      --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude '.coverage' \
       --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' \
       ./ jcbanos@jarvis.tail867051.ts.net:~/jarvis/
 
