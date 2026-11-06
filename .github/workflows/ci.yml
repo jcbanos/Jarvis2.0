@@ -40,6 +40,25 @@ jobs:
       - name: Check formatting
         run: ruff format --check --diff .          # shows exactly what would change
 
+  commits:
+    name: Commits
+    # On main every commit is already merged, so there's nothing to compare.
+    # Dependabot writes its own messages, which don't follow the template.
+    if: ${{ github.ref != 'refs/heads/main' && github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the whole history, so the branch can be compared with origin/main
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Check commit messages
+        run: python scripts/check_commits.py origin/main
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -64,7 +83,7 @@ jobs:
   # checks have finished. Add each new check's job ID to "needs".
   notify:
     name: Notify
-    needs: [lint, test]
+    needs: [lint, commits, test]
     # Run whether the checks passed or failed, but not when a newer push
     # cancelled this run. Dependabot's runs can't read secrets, so skip them.
     if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
@@ -86,8 +105,9 @@ jobs:
             exit 0
           fi
 
-          # Every check that didn't succeed, for example "test (failure)"
-          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success")
+          # Every check that failed or was cancelled, for example "test (failure)".
+          # "skipped" is fine: some checks don't run on main.
+          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped")
                                             | "\(.key) (\(.value.result))"' | paste -sd, - | sed 's/,/, /g')
           title_line=$(printf '%s\n' "$COMMIT" | head -n 1)
 
