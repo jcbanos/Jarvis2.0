@@ -137,6 +137,7 @@ GitHub runs these checks automatically on every push, to any branch. The setup i
 
 | Check | What it does | Run it on your Mac first |
 |---|---|---|
+| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml` | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting) |
 | Tests | Runs pytest on Python 3.14. No secrets needed, since Claude and ntfy are faked | `.venv/bin/pytest` |
 
 When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,

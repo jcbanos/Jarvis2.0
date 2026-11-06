@@ -18,6 +18,28 @@ permissions:
   contents: read   # the checks only read the code
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      # Only Ruff is needed here, at the version pinned in requirements.txt,
+      # so the Mac and CI always agree.
+      - name: Install Ruff
+        run: pip install "$(grep '^ruff==' requirements.txt | cut -d' ' -f1)"
+
+      - name: Check for mistakes
+        run: ruff check --output-format=github .   # marks problems on the PR's changed lines
+
+      - name: Check formatting
+        run: ruff format --check --diff .          # shows exactly what would change
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -42,7 +64,7 @@ jobs:
   # checks have finished. Add each new check's job ID to "needs".
   notify:
     name: Notify
-    needs: [test]
+    needs: [lint, test]
     # Run whether the checks passed or failed, but not when a newer push
     # cancelled this run. Dependabot's runs can't read secrets, so skip them.
     if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
