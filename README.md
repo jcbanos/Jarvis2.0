@@ -7,7 +7,7 @@ It's built to grow: web search is the first ability, and new ones are Python fun
 ## How it works
 
 ```
-Ring ──Bluetooth──▶ Pebble app (phone) ──HTTPS──▶ jarvis.tail867051.ts.net
+Ring ──Bluetooth──▶ Pebble app (phone) ──HTTPS──▶ jarvis.<tailnet>.ts.net
                     transcribes speech            │ Tailscale Funnel
                                                   ▼
                                     Raspberry Pi: Jarvis service
@@ -39,7 +39,7 @@ flowchart TB
         GarminConnect["Garmin Connect<br/>forwards ntfy only"]
     end
 
-    Funnel["Tailscale Funnel<br/>jarvis.tail867051.ts.net"]
+    Funnel["Tailscale Funnel<br/>public HTTPS address"]
 
     subgraph pi["Raspberry Pi 5: systemd service 'jarvis'"]
         App["app.py<br/>/webhook and /health"]
@@ -120,14 +120,23 @@ def get_room_temperature(room: str) -> str:
 
 Run these in Terminal on your Mac. They reach the Pi through **Tailscale**, so they work from anywhere, as long as the Tailscale app on your Mac is connected to the same account as the Pi. At home, `jarvis.local` may also work, but it's unreliable.
 
+`jarvis` is a shortcut in `~/.ssh/config` on your Mac. `<tailnet>` stands for your Tailscale network's name, shown
+in the Tailscale admin console under **DNS**. It's kept out of this README because the repo is public.
+
+```
+Host jarvis
+    HostName jarvis.<tailnet>.ts.net
+    User <your Pi username>
+```
+
 | What | Command |
 |---|---|
-| Is Jarvis running? | `ssh jcbanos@jarvis.tail867051.ts.net 'systemctl status jarvis'` |
-| Watch the log live (Ctrl+C to stop) | `ssh jcbanos@jarvis.tail867051.ts.net 'journalctl -u jarvis -f'` |
-| Token use per question | `ssh jcbanos@jarvis.tail867051.ts.net 'journalctl -u jarvis \| grep "tokens used"'` |
-| Is it reachable from the internet? | Open `https://jarvis.tail867051.ts.net/health` and look for `{"status":"ok"}` |
+| Is Jarvis running? | `ssh jarvis 'systemctl status jarvis'` |
+| Watch the log live (Ctrl+C to stop) | `ssh jarvis 'journalctl -u jarvis -f'` |
+| Token use per question | `ssh jarvis 'journalctl -u jarvis \| grep "tokens used"'` |
+| Is it reachable from the internet? | Open `https://jarvis.<tailnet>.ts.net/health` and look for `{"status":"ok"}` |
 | Run the tests on your Mac | `.venv/bin/pytest` |
-| Ask a question without the ring | `.venv/bin/python scripts/send_test_request.py "your question" --url https://jarvis.tail867051.ts.net/webhook` |
+| Ask a question without the ring | `.venv/bin/python scripts/send_test_request.py "your question" --url https://jarvis.<tailnet>.ts.net/webhook` |
 
 ### Checks on every push
 
@@ -158,7 +167,7 @@ needs the usual Pi update. Its PRs skip the Commits check and send no ntfy messa
 To check exactly what's installed on the Pi, including libraries that aren't pinned:
 
 ```bash
-ssh jcbanos@jarvis.tail867051.ts.net '~/jarvis/.venv/bin/pip freeze' > /tmp/pi-freeze.txt
+ssh jarvis '~/jarvis/.venv/bin/pip freeze' > /tmp/pi-freeze.txt
 .venv/bin/pip-audit -r /tmp/pi-freeze.txt --no-deps --disable-pip
 ```
 
@@ -167,7 +176,7 @@ the commit, and any failed checks. Tap the message to open the run. CI uses its 
 answers, stored as the GitHub Actions secret `NTFY_TOPIC` (Settings → Secrets and variables → Actions). To move to a
 new topic, subscribe to it in the ntfy app and run `gh secret set NTFY_TOPIC`.
 
-Each run takes about a minute, well within the 2,000 free Actions minutes a private repo gets each month.
+Each run takes about a minute. Actions minutes are free and unlimited for public repos.
 
 ### Updating the Pi after changing code
 
@@ -178,13 +187,13 @@ From the `Jarvis2.0` folder on your Mac:
 rsync -a --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
       --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude '.coverage' \
       --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' \
-      ./ jcbanos@jarvis.tail867051.ts.net:~/jarvis/
+      ./ jarvis:~/jarvis/
 
 # 2. Only if requirements.txt changed: install the new libraries
-ssh jcbanos@jarvis.tail867051.ts.net 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
+ssh jarvis 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
 
 # 3. Restart Jarvis (asks for your Pi password)
-ssh -t jcbanos@jarvis.tail867051.ts.net 'sudo systemctl restart jarvis'
+ssh -t jarvis 'sudo systemctl restart jarvis'
 ```
 
 ### Python on the Pi
@@ -194,7 +203,7 @@ Jarvis runs on **Python 3.14**, the same as the Mac. Debian on the Pi only ships
 `apt upgrade` doesn't update it, so now and then run:
 
 ```bash
-ssh jcbanos@jarvis.tail867051.ts.net '~/.local/bin/uv python upgrade 3.14'
+ssh jarvis '~/.local/bin/uv python upgrade 3.14'
 ```
 
 The venv uses whatever 3.14 patch release uv has, so a restart picks up the upgrade.
@@ -202,7 +211,7 @@ The venv uses whatever 3.14 patch release uv has, so a restart picks up the upgr
 To rebuild the venv, for example when moving to a new Python version (Jarvis is down for about 30 seconds):
 
 ```bash
-ssh -t jcbanos@jarvis.tail867051.ts.net 'set -e; cd ~/jarvis; sudo -v
+ssh -t jarvis 'set -e; cd ~/jarvis; sudo -v
 sudo systemctl stop jarvis
 mv .venv .venv-old
 ~/.local/bin/uv venv --python 3.14 --seed .venv
@@ -230,7 +239,7 @@ If it fails, put the old one back with `rm -rf .venv && mv .venv-old .venv` and 
 
 | Setting | Value |
 |---|---|
-| URL | `https://jarvis.tail867051.ts.net/webhook` |
+| URL | `https://jarvis.<tailnet>.ts.net/webhook` |
 | Payload | **Transcription only** |
 | Signing | On, with the `WEBHOOK_SECRET` value |
 | Ring Button | Don't send this gesture to the **Index agent**, otherwise Pebble's built-in assistant answers as well as Jarvis. The webhook still fires |
@@ -266,5 +275,5 @@ Even a question with no search sends about 6,000 tokens, because describing the 
 | "Couldn't answer: …" | Claude or the network failed. The log has the details (`journalctl -u jarvis`) |
 | Nothing arrives at all | Check `/health` in a browser, then the log, then that the ntfy app is subscribed to the right topic |
 | Answer on phone but not watch | Garmin Connect needs **Notification access**, and ntfy must be on in its app list |
-| Can't reach the Pi from the Mac | Check the Tailscale app on the Mac is connected, then use `jarvis.tail867051.ts.net` |
+| Can't reach the Pi from the Mac | Check the Tailscale app on the Mac is connected, then try `ssh jarvis` again |
 | Nothing on the Garmin | It may be in sleep mode or Do Not Disturb. Answers still arrive on the phone |
