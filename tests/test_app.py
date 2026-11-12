@@ -4,16 +4,21 @@ TestClient sends requests straight into the FastAPI app with no real network.
 It also runs background tasks before returning, so we can check what was sent.
 """
 
+import logging
 import time
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 import jarvis.app as app_module
 from jarvis.dedupe import DeliveryLog
+from jarvis.notify import send as real_send
 from jarvis.security import sign, signed_bytes
 
 SECRET = "test-secret-that-is-at-least-32-bytes-long"
+NTFY_TOPIC = "jarvis-fake-topic-for-tests"
+API_KEY = "fake-anthropic-key-for-tests"
 BOUNDARY = "jarvis-test-boundary"
 
 
@@ -137,3 +142,95 @@ def test_oversized_request_is_refused(jarvis):
 def test_health(jarvis):
     client, _, _ = jarvis
     assert client.get("/health").json() == {"status": "ok"}
+
+
+# --- The log must never hold secrets (issue #17) ---
+#
+# These tests use the real notify.send, so httpx runs and writes its own log
+# lines, just as on the Pi. Only the network is faked: MockTransport answers
+# instead of ntfy.sh.
+
+
+@pytest.fixture
+def ntfy_replies(jarvis, monkeypatch, caplog):
+    """Use the real notify.send against a fake ntfy. Returns (client, set_reply).
+
+    Call set_reply with a function that receives the request and returns a
+    response (or raises), to choose how the fake ntfy behaves.
+    """
+    client, _, _ = jarvis
+    monkeypatch.setenv("NTFY_TOPIC", NTFY_TOPIC)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", API_KEY)
+    monkeypatch.setattr(app_module.notify, "send", real_send)
+
+    reply = {"handler": lambda request: httpx.Response(200)}
+
+    def fake_post(url, **kwargs):
+        transport = httpx.MockTransport(lambda request: reply["handler"](request))
+        with httpx.Client(transport=transport) as fake_ntfy:
+            return fake_ntfy.post(url, **kwargs)
+
+    monkeypatch.setattr(app_module.notify.httpx, "post", fake_post)
+    # Capture INFO and above, the same level the Pi's journal records.
+    caplog.set_level(logging.INFO)
+
+    def set_reply(handler):
+        reply["handler"] = handler
+
+    return client, set_reply
+
+
+def assert_no_secrets(log_text):
+    for secret in (NTFY_TOPIC, SECRET, API_KEY):
+        assert secret not in log_text
+
+
+def test_logs_hold_no_secrets_on_success(ntfy_replies, caplog):
+    client, _ = ntfy_replies
+    post(client, *pebble_request())
+    assert_no_secrets(caplog.text)
+    assert "notification sent to ntfy" in caplog.text
+
+
+def test_logs_hold_no_secrets_when_ntfy_rejects(ntfy_replies, caplog):
+    client, set_reply = ntfy_replies
+    set_reply(lambda request: httpx.Response(429))
+    post(client, *pebble_request())
+    assert_no_secrets(caplog.text)
+    assert "ntfy replied 429" in caplog.text
+
+
+def test_logs_hold_no_secrets_when_ntfy_unreachable(ntfy_replies, caplog):
+    client, set_reply = ntfy_replies
+
+    def unreachable(request):
+        raise httpx.ConnectError("no route to host", request=request)
+
+    set_reply(unreachable)
+    post(client, *pebble_request())
+    assert_no_secrets(caplog.text)
+    assert "could not reach ntfy (ConnectError)" in caplog.text
+
+
+def test_unexpected_send_error_logs_only_its_type(jarvis, monkeypatch, caplog):
+    client, _, _ = jarvis
+    caplog.set_level(logging.INFO)
+
+    def broken_send(message, title="Jarvis"):
+        raise RuntimeError(f"something broke at https://ntfy.sh/{NTFY_TOPIC}")
+
+    monkeypatch.setattr(app_module.notify, "send", broken_send)
+    post(client, *pebble_request())
+    assert_no_secrets(caplog.text)
+    assert "unexpected RuntimeError" in caplog.text
+
+
+def test_long_question_is_shortened_in_log(jarvis, caplog):
+    client, asked, _ = jarvis
+    caplog.set_level(logging.INFO)
+    question = "What did my doctor say about the results of the blood test?"
+    post(client, *pebble_request(question))
+    assert asked == [question]  # Claude still gets the whole question
+    assert question not in caplog.text
+    shortened = question[:40] + "…"
+    assert f"question: {shortened!r} ({len(question)} chars)" in caplog.text
