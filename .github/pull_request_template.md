@@ -21,6 +21,7 @@
 
 ## Security & correctness
 - [ ] No secrets (API key, webhook secret, ntfy topic, tokens) in the diff or the logs
+- [ ] Nothing private in the diff, PR text or CI logs: this repo is public
 - [ ] `/webhook` still rejects unsigned requests
 - [ ] Text from web results can't trigger actions
 - **Could this break something?** YES_OR_NO_AND_EXPLAIN

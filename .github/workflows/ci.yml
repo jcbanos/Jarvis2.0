@@ -1,15 +1,26 @@
 # Checks that GitHub runs on every push, so problems show on the PR before
 # merging. Results appear in the repo's Actions tab and at the bottom of each PR.
 # Each check is its own job, and jobs run in parallel.
+#
+# Actions are pinned to a commit SHA, with the version in a comment. Whoever
+# controls an action can move a tag like @v7 to different code, but a SHA always
+# means the same code. Dependabot updates both, and a repo setting refuses to
+# run any action that isn't pinned this way.
 name: CI
 
-# Every push, to any branch. A PR shows the results for its branch's latest
-# push. Also running on "pull_request" would run every check twice.
 on:
+  # Every push, to any branch. A PR shows the results for its branch's latest
+  # push. Also running on "pull_request" would run every check twice.
   push:
+  # Every Monday at 07:00 UTC, even with no push: new security holes in the
+  # libraries, and new gitleaks rules, appear without any change here.
+  schedule:
+    - cron: "0 7 * * 1"
+  # A "Run workflow" button in the Actions tab, to run the weekly check now.
+  workflow_dispatch:
 
-# If you push again before the last run finishes, cancel the old run. This saves
-# the free Actions minutes the private repo gets each month.
+# If you push again before the last run finishes, cancel the old run. Its
+# results would be out of date anyway.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -22,10 +33,14 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      # From actionlint_1.7.12_checksums.txt on the release page. Update both together.
+      ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -40,6 +55,38 @@ jobs:
       - name: Check formatting
         run: ruff format --check --diff .          # shows exactly what would change
 
+      # Download actionlint and stop if it isn't exactly the published file.
+      - name: Install actionlint
+        run: |
+          file="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${file}"
+          echo "${ACTIONLINT_SHA256}  ${file}" | sha256sum --check
+          tar -xzf "$file" actionlint
+
+      # Checks this file for mistakes: bad expressions, wrong job IDs in
+      # "needs", and, through shellcheck, errors in the run: scripts.
+      - name: Check the workflow
+        run: ./actionlint -color
+
+      # A typo in the service file would otherwise only show on the Pi, often
+      # silently: systemd skips a line it can't read and starts Jarvis without
+      # it. systemd checks that the program in ExecStart exists, so first put a
+      # stand-in at that path, read from the file itself.
+      - name: Check the service file
+        run: |
+          program=$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' deploy/jarvis.service)
+          sudo mkdir -p "$(dirname "$program")"
+          printf '#!/bin/sh\n' | sudo tee "$program" >/dev/null
+          sudo chmod +x "$program"
+          # For a line it can't read, verify only warns ("ignoring") and still
+          # succeeds. A correct file produces no output, so fail on any.
+          problems=$(systemd-analyze verify deploy/jarvis.service 2>&1) || true
+          if [ -n "$problems" ]; then
+            echo "$problems"
+            echo "::error file=deploy/jarvis.service::systemd-analyze found problems (see above)"
+            exit 1
+          fi
+
   commits:
     name: Commits
     # On main every commit is already merged, so there's nothing to compare.
@@ -48,11 +95,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # the whole history, so the branch can be compared with origin/main
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -68,7 +115,7 @@ jobs:
       # From gitleaks_8.30.1_checksums.txt on the release page. Update both together.
       GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # the whole history, since a secret in any old commit is still readable
 
@@ -90,9 +137,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
           cache: pip
@@ -111,9 +158,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
           cache: pip
@@ -131,9 +178,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"   # same as the Pi and the Mac
           cache: pip               # reuse downloaded libraries between runs
@@ -173,7 +220,8 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}  # the separate jarvis-ci-… topic
           RESULTS: ${{ toJSON(needs) }}
           BRANCH: ${{ github.ref_name }}
-          COMMIT: ${{ github.event.head_commit.message }}
+          EVENT: ${{ github.event_name }}   # push, schedule or workflow_dispatch
+          COMMIT: ${{ github.event.head_commit.message }}   # empty unless it's a push
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$NTFY_TOPIC" ]; then
@@ -185,14 +233,21 @@ jobs:
           # "skipped" is fine: some checks don't run on main.
           failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped")
                                             | "\(.key) (\(.value.result))"' | paste -sd, - | sed 's/,/, /g')
-          title_line=$(printf '%s\n' "$COMMIT" | head -n 1)
+          # Weekly and manual runs have no commit, so say what kind of run it was.
+          if [ "$EVENT" = "push" ]; then
+            what="CI"
+            title_line=$(printf '%s\n' "$COMMIT" | head -n 1)
+          else
+            what="Weekly check"
+            title_line="Scheduled run on $BRANCH"
+          fi
 
           if [ -z "$failed" ]; then
-            title="✅ CI passed: $BRANCH"
+            title="✅ $what passed: $BRANCH"
             message="$title_line"
             tag="white_check_mark"
           else
-            title="❌ CI failed: $BRANCH"
+            title="❌ $what failed: $BRANCH"
             message=$(printf '%s\nFailed: %s' "$title_line" "$failed")
             tag="x"
           fi

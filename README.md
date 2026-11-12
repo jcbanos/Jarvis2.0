@@ -138,15 +138,19 @@ Host jarvis
 | Run the tests on your Mac | `.venv/bin/pytest` |
 | Ask a question without the ring | `.venv/bin/python scripts/send_test_request.py "your question" --url https://jarvis.<tailnet>.ts.net/webhook` |
 
-### Checks on every push
+### Checks on every push, and weekly
 
 GitHub runs these checks automatically on every push, to any branch. The setup is in
 [.github/workflows/ci.yml](.github/workflows/ci.yml). Results show at the bottom of the PR and in the repo's
 **Actions** tab. A red ✗ means don't merge yet. Click it to see which check failed and why.
 
+They also run on `main` every Monday at 07:00 UTC, even with no push, because new security holes and new gitleaks
+rules appear without any change here. To run that check now, use **Run workflow** on the CI page of the Actions tab,
+or `gh workflow run CI --ref main`.
+
 | Check | What it does | Run it on your Mac first |
 |---|---|---|
-| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml` | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting) |
+| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml`. actionlint checks `ci.yml` itself for mistakes, including its shell scripts. `systemd-analyze verify` checks `deploy/jarvis.service` for typos | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting). `actionlint` (install with `brew install actionlint shellcheck`). The service file can only be checked on Linux |
 | Commits | Every commit on the branch that isn't on `main` follows [templates/git/commit.txt](templates/git/commit.txt). Merge commits and `main` itself are skipped | `.venv/bin/python scripts/check_commits.py` |
 | Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
 | Audit | pip-audit checks the libraries in `requirements.txt`, and the ones they bring in, for known security holes | `.venv/bin/pip-audit -r requirements.txt` |
@@ -164,6 +168,19 @@ version in `requirements.txt`, check the tests pass, and update the Pi.
 versions of the libraries or the GitHub Actions, one PR for each. CI tests it like any other PR. Merging it still
 needs the usual Pi update. Its PRs skip the Commits check and send no ntfy message.
 
+**Actions are pinned to a commit SHA** (`actions/checkout@3d3c42e… # v7.0.1`), not a tag like `@v7`. Whoever controls
+an action can move a tag to different code, but not a SHA. Dependabot updates both the SHA and the comment, and a repo
+setting (Settings → Actions → General) refuses to run any action that isn't pinned this way.
+
+**GitHub's security settings** (Settings → Advanced Security), all free for public repos:
+
+| Setting | What it does |
+|---|---|
+| Dependabot alerts | Warns you, under the **Security** tab, when a library in `requirements.txt` has a known security hole |
+| Dependabot security updates | Opens a PR straight away to fix such a hole, without waiting for Monday |
+| Secret scanning | Looks for known kinds of secrets, such as API keys, anywhere in the repo and alerts you |
+| Push protection | **Refuses a push** that contains a known kind of secret, before it reaches GitHub. Remove the secret from the commit (`git commit --amend`, or rewrite the branch) and push again. Unlike the Secrets check, nothing has leaked yet |
+
 To check exactly what's installed on the Pi, including libraries that aren't pinned:
 
 ```bash
@@ -172,7 +189,7 @@ ssh jarvis '~/jarvis/.venv/bin/pip freeze' > /tmp/pi-freeze.txt
 ```
 
 When the checks finish, a **Notify** step sends ✅ or ❌ to your phone and Garmin through ntfy, with the branch,
-the commit, and any failed checks. Tap the message to open the run. CI uses its own topic, separate from Jarvis's
+the commit, and any failed checks. The Monday run's message says **Weekly check** instead. Tap the message to open the run. CI uses its own topic, separate from Jarvis's
 answers, stored as the GitHub Actions secret `NTFY_TOPIC` (Settings → Secrets and variables → Actions). To move to a
 new topic, subscribe to it in the ntfy app and run `gh secret set NTFY_TOPIC`.
 
