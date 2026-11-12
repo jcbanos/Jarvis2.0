@@ -83,7 +83,7 @@ The solid arrows are one question's journey. The dotted arrow is how you maintai
 | `jarvis/agent.py` | **The only LangChain part.** `answer(question)` takes text in and returns text out |
 | `jarvis/tools/__init__.py` | Jarvis's abilities: the `TOOLS` list |
 | `jarvis/notify.py` | Sends text to your phone through ntfy |
-| `tests/` | 31 automated tests. They fake Claude and ntfy, so they cost nothing |
+| `tests/` | 59 automated tests. They fake Claude and ntfy, so they cost nothing |
 | `scripts/send_test_request.py` | Acts as the Pebble app, for testing without the ring |
 | `deploy/jarvis.service` | Keeps Jarvis running on the Pi |
 
@@ -261,6 +261,8 @@ Even a question with no search sends about 6,000 tokens, because describing the 
 
 - **Signatures:** anything not signed with your secret gets `401 unauthorized`. Requests older than 5 minutes are rejected too, so a recorded request can't be replayed.
 - **Only two addresses exist,** `/health` and `/webhook`. Automated scanners find every new public address within minutes and try paths like `/.env`. They all get `404`, and you'll see them in the log. That's normal.
+- **The log** (`journalctl -u jarvis`) holds the first 40 characters of each question, token use, rejected requests
+  and errors. It never holds the ntfy topic, the webhook secret or the API key, and tests check this.
 - **The service runs as your user,** can't gain admin rights, and can only write inside `~/jarvis`.
 - **If a secret leaks:** for the webhook secret, generate a new one, put it in `.env` on the Pi and in the Pebble app, and restart Jarvis. For the API key, delete it in the Console and create a new one. For the ntfy topic, pick a new random name, update `.env`, and resubscribe on your phone.
 

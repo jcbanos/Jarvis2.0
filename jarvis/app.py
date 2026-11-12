@@ -28,6 +28,16 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("jarvis.app")
 
+# The HTTP libraries log every request with its full URL. For ntfy, the URL
+# contains your topic, which works like a password, so only let them log
+# warnings. Jarvis logs its own "sent" line instead. httpx2 is a newer copy of
+# httpx that the Anthropic library uses.
+for http_logger in ("httpx", "httpx2"):
+    logging.getLogger(http_logger).setLevel(logging.WARNING)
+
+# Questions can hold private details, so the log keeps only their beginning.
+PREVIEW_CHARS = 40
+
 # A transcript is a few kilobytes. Refusing anything over 1 MB stops a stranger
 # from making the Pi read a huge upload before the signature check rejects it.
 MAX_BODY_BYTES = 1_000_000
@@ -83,7 +93,7 @@ async def webhook(request: Request, background: BackgroundTasks):
         return {"status": "empty"}
 
     # 6. Reply straight away. FastAPI runs the background task after replying.
-    log.info("question: %s", question)
+    log.info("question: %s", _preview(question))
     background.add_task(handle_question, question)
     return {"status": "accepted"}
 
@@ -94,13 +104,25 @@ def handle_question(question: str) -> None:
         reply = answer(question)
     except Exception:
         # log.exception records the full error details for later diagnosis.
-        log.exception("could not answer %r", question)
+        log.exception("could not answer %s", _preview(question))
         reply = f"Couldn't answer: {question}"
     _send_safely(reply)
+
+
+def _preview(question: str) -> str:
+    """The question's first few words for the log, e.g. 'What time is…' (52 chars)."""
+    shown = question if len(question) <= PREVIEW_CHARS else question[:PREVIEW_CHARS] + "…"
+    return f"{shown!r} ({len(question)} chars)"
 
 
 def _send_safely(message: str) -> None:
     try:
         notify.send(message)
-    except Exception:
-        log.exception("could not send notification")
+    except notify.NotifyError as problem:
+        log.error("could not send notification: %s", problem)
+    except Exception as problem:
+        # Something unexpected. Log only its type: its message or traceback
+        # could contain the ntfy URL.
+        log.error("could not send notification: unexpected %s", type(problem).__name__)
+    else:
+        log.info("notification sent to ntfy")
