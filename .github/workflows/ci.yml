@@ -79,8 +79,10 @@ jobs:
           printf '#!/bin/sh\n' | sudo tee "$program" >/dev/null
           sudo chmod +x "$program"
           # For a line it can't read, verify only warns ("ignoring") and still
-          # succeeds. A correct file produces no output, so fail on any.
-          problems=$(systemd-analyze verify deploy/jarvis.service 2>&1) || true
+          # succeeds. A correct file produces no output, so fail on any. verify
+          # also loads the runner's own units, whose warnings aren't ours to
+          # fix, so keep only the lines that name jarvis.service.
+          problems=$(systemd-analyze verify deploy/jarvis.service 2>&1 | grep -F 'jarvis.service') || true
           if [ -n "$problems" ]; then
             echo "$problems"
             echo "::error file=deploy/jarvis.service::systemd-analyze found problems (see above)"
