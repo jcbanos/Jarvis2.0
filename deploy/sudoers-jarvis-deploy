@@ -1,0 +1,13 @@
+# Lets the automatic deploy (scripts/deploy.py) restart Jarvis without a
+# password. Only this exact command is allowed: not stop, not other services,
+# not any other arguments. Everything else still asks for your password.
+#
+# Install, as in the README's one-time setup. visudo -c checks it first, since
+# a broken sudoers file can lock you out of sudo:
+#   sudo visudo -c -f ~/jarvis/deploy/sudoers-jarvis-deploy
+#   sudo install -m 440 ~/jarvis/deploy/sudoers-jarvis-deploy /etc/sudoers.d/jarvis-deploy
+#
+# Check it worked (should restart without asking for a password):
+#   sudo -n /usr/bin/systemctl restart jarvis
+
+jcbanos ALL=(root) NOPASSWD: /usr/bin/systemctl restart jarvis

@@ -1,0 +1,23 @@
+# Runs jarvis-deploy.service (the automatic deploy) once a day at 13:00.
+#
+# The time is the Pi's local time (timedatectl shows its time zone).
+#
+# Install with jarvis-deploy.service, as in the README's one-time setup:
+#   sudo cp ~/jarvis/deploy/jarvis-deploy.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis-deploy.timer
+#
+# Useful commands:
+#   systemctl list-timers jarvis-deploy    when it runs next, and when it last ran
+#   sudo systemctl start jarvis-deploy     deploy now, without waiting for 13:00
+
+[Unit]
+Description=Deploy the latest main to Jarvis once a day
+
+[Timer]
+OnCalendar=*-*-* 13:00:00
+# If the Pi was off at 13:00, run as soon as it's back on.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

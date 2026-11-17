@@ -53,10 +53,10 @@ flowchart TB
     subgraph cloud["Internet services"]
         Claude["Anthropic API<br/>Sonnet 5.5 + web search"]
         Ntfy["ntfy.sh"]
-        GitHub["GitHub<br/>issues"]
+        GitHub["GitHub<br/>issues and code"]
     end
 
-    Mac["Your Mac<br/>ssh jarvis, rsync updates"]
+    Mac["Your Mac<br/>ssh jarvis"]
 
     Ring -->|Bluetooth| PebbleApp
     PebbleApp -->|"HTTPS POST /webhook"| Funnel
@@ -74,9 +74,10 @@ flowchart TB
     App -.->|confirmed idea| GitHubPy
     GitHubPy -.->|token| GitHub
     Mac -.->|"Tailscale, private"| pi
+    pi -.->|"daily 13:00: git fetch main"| GitHub
 ```
 
-The solid arrows are one question's journey. The dotted arrows are an idea's last step, when you tap **Create issue**, and how you maintain the Pi. Only `/webhook`, `/ideas/confirm` and `/health` are reachable from the internet. The Mac's SSH access goes over Tailscale's private network and isn't public.
+The solid arrows are one question's journey. The dotted arrows are an idea's last step, when you tap **Create issue**, and how the Pi is maintained: you over SSH, and the daily deploy, which fetches new code from GitHub. Only `/webhook`, `/ideas/confirm` and `/health` are reachable from the internet. The Mac's SSH access goes over Tailscale's private network and isn't public.
 
 ## The code
 
@@ -91,9 +92,12 @@ The solid arrows are one question's journey. The dotted arrows are an idea's las
 | `jarvis/drafts.py` | Keeps idea drafts until you confirm them, under one-time codes |
 | `jarvis/github.py` | Creates a GitHub issue once you've confirmed an idea |
 | `jarvis/notify.py` | Sends text to your phone through ntfy, with optional buttons and links |
-| `tests/` | 95 automated tests. They fake Claude, ntfy and GitHub, so they cost nothing |
+| `tests/` | 120 automated tests. They fake Claude, ntfy, GitHub and the Pi's commands, so they cost nothing |
 | `scripts/send_test_request.py` | Acts as the Pebble app, for testing without the ring |
+| `scripts/deploy.py` | The daily deploy on the Pi: fetches `main`, checks CI passed, tests, restarts, goes back if anything fails |
 | `deploy/jarvis.service` | Keeps Jarvis running on the Pi |
+| `deploy/jarvis-deploy.timer` + `.service` | Run `scripts/deploy.py` every day at 13:00 |
+| `deploy/sudoers-jarvis-deploy` | Lets the deploy run `systemctl restart jarvis`, and nothing else, without your password |
 
 ### LangChain in one minute
 
@@ -110,7 +114,7 @@ Tools run in one of two places. **Server tools**, like web search, run on Anthro
 1. Write a function in `jarvis/tools/` and decorate it with `@tool`. Make the docstring say clearly when to use it.
 2. Add it to `TOOLS` in `jarvis/tools/__init__.py`.
 3. Test it on your Mac with `.venv/bin/python -m jarvis.agent "a question that needs it"`.
-4. Update the Pi (see below).
+4. Open a PR and merge it. The Pi picks it up at 13:00 (see [Deploying to the Pi](#deploying-to-the-pi)).
 
 ```python
 from langchain.tools import tool
@@ -180,7 +184,7 @@ or `gh workflow run CI --ref main`.
 
 | Check | What it does | Run it on your Mac first |
 |---|---|---|
-| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml`. actionlint checks `ci.yml` itself for mistakes, including its shell scripts. `systemd-analyze verify` checks `deploy/jarvis.service` for typos | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting). `actionlint` (install with `brew install actionlint shellcheck`). The service file can only be checked on Linux |
+| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml`. actionlint checks `ci.yml` itself for mistakes, including its shell scripts. `systemd-analyze verify` checks the service and timer files in `deploy/` for typos. `scripts/deploy.py` is loaded with an older Python, since the Pi runs it with its system Python 3.13 | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting). `actionlint` (install with `brew install actionlint shellcheck`). The service files and the older-Python check can only be run on Linux |
 | Commits | Every commit on the branch that isn't on `main` follows [templates/git/commit.txt](templates/git/commit.txt). Merge commits and `main` itself are skipped | `.venv/bin/python scripts/check_commits.py` |
 | Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
 | Audit | pip-audit checks the libraries in `requirements.txt`, and the ones they bring in, for known security holes | `.venv/bin/pip-audit -r requirements.txt` |
@@ -192,11 +196,12 @@ it's still in the history. Replace it first (see [Security](#security) for each 
 If it's a fake test value, add it to `.gitleaks.toml` instead.
 
 **If the Audit check fails,** its log names the library, the problem and the first version that fixes it. Raise that
-version in `requirements.txt`, check the tests pass, and update the Pi.
+version in `requirements.txt`, check the tests pass, and merge. The daily deploy installs it on the Pi.
 
 **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)) opens a PR every Monday when there are newer
-versions of the libraries or the GitHub Actions, one PR for each. CI tests it like any other PR. Merging it still
-needs the usual Pi update. Its PRs skip the Commits check and send no ntfy message.
+versions of the libraries or the GitHub Actions, one PR for each. CI tests it like any other PR. Nothing reaches the
+Pi until you merge it; then the daily deploy picks it up like any other merge. Its PRs skip the Commits check and send
+no ntfy message.
 
 **Actions are pinned to a commit SHA** (`actions/checkout@3d3c42e… # v7.0.1`), not a tag like `@v7`. Whoever controls
 an action can move a tag to different code, but not a SHA. Dependabot updates both the SHA and the comment, and a repo
@@ -225,29 +230,80 @@ new topic, subscribe to it in the ntfy app and run `gh secret set NTFY_TOPIC`.
 
 Each run takes about a minute. Actions minutes are free and unlimited for public repos.
 
-### Updating the Pi after changing code
+### Deploying to the Pi
 
-From the `Jarvis2.0` folder on your Mac:
+**Merging to `main` is enough.** Every day at 13:00 (Pi time), the Pi runs [scripts/deploy.py](scripts/deploy.py).
+If `main` has a new commit, it:
+
+1. Asks GitHub whether CI passed on it, waiting up to 15 minutes if CI is still running. If CI failed, it never
+   deploys that commit.
+2. Moves `~/jarvis` to the new commit with git, and installs libraries if `requirements.txt` changed.
+3. Runs the tests on the Pi, restarts Jarvis, and checks `/health`.
+4. Sends **✅ Deployed to the Pi** to your phone, or **❌ Deploy failed** with the reason. On a failure it has already
+   gone back to the previous commit, so Jarvis keeps running the old code. That commit is never retried; merge a fix
+   and the next run deploys it.
+
+Only Jarvis restarts, for a few seconds, not the Pi. The deploy is a separate service (`jarvis-deploy`), so it keeps
+running while Jarvis restarts. GitHub never connects to the Pi: the Pi fetches from the public repo, so GitHub holds
+no SSH key or Tailscale access.
+
+| What | Command |
+|---|---|
+| Deploy now, without waiting for 13:00 | `ssh -t jarvis 'sudo systemctl start jarvis-deploy'` |
+| What the last deploys did | `ssh jarvis 'journalctl -u jarvis-deploy -n 50'` |
+| When it runs next | `ssh jarvis 'systemctl list-timers jarvis-deploy'` |
+| Which commit is running | `ssh jarvis 'git -C ~/jarvis log -1 --oneline'` |
+
+**`.env`, `.venv/` and `deliveries.sqlite3` are never touched.** They aren't in git, and the deploy never deletes
+files git doesn't know about. The Pi's `.env` has settings the Mac's doesn't, such as `GITHUB_TOKEN`. To change a
+setting, edit it on the Pi with `ssh -t jarvis 'nano ~/jarvis/.env'`, then restart Jarvis.
+
+**Trying unmerged code on the Pi** is still possible with rsync, but the next deploy replaces it with `main`:
 
 ```bash
-# 1. Copy changes across (only what changed is sent). Add --dry-run --itemize-changes
-#    first to list what would be copied without copying anything.
 rsync -a --exclude '.env' --exclude '.vscode/' \
-      --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
+      --exclude '.venv/' --exclude '.venv-*/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
       --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude '.coverage' \
-      --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' \
+      --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' --exclude '.deploy-*' \
       ./ jarvis:~/jarvis/
-
-# 2. Only if requirements.txt changed: install the new libraries
-ssh jarvis 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
-
-# 3. Restart Jarvis (asks for your Pi password)
 ssh -t jarvis 'sudo systemctl restart jarvis'
 ```
 
-**`.env` is never copied.** The Pi's `.env` has settings the Mac's doesn't, such as `GITHUB_TOKEN`, so copying it
-would erase them. To change a setting on the Pi, edit it there with `ssh -t jarvis 'nano ~/jarvis/.env'`, then
-restart. `.vscode/` holds your editor's settings, which the Pi doesn't need.
+#### One-time setup on the Pi
+
+Done once, after the PR that added the deploy was merged. Each `sudo` asks for your Pi password.
+
+```bash
+ssh -t jarvis
+cd ~/jarvis
+
+# 1. Make the folder a git checkout of main. "git reset" without --hard adopts the
+#    history and keeps every file as it is. git status should then show no changes.
+git init -b main
+git remote add origin https://github.com/jcbanos/Jarvis2.0.git
+git fetch origin main
+git reset origin/main
+git status
+
+# 2. Allow the deploy to restart Jarvis without a password. visudo checks the file
+#    first, because a broken sudo rule can lock you out of sudo.
+sudo visudo -c -f deploy/sudoers-jarvis-deploy
+sudo install -m 440 deploy/sudoers-jarvis-deploy /etc/sudoers.d/jarvis-deploy
+sudo -n /usr/bin/systemctl restart jarvis && echo "restart works without a password"
+
+# 3. Install and start the daily timer, then run one deploy now to check it.
+sudo cp deploy/jarvis-deploy.service deploy/jarvis-deploy.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now jarvis-deploy.timer
+sudo systemctl start jarvis-deploy
+journalctl -u jarvis-deploy -n 20    # should end with "Up to date"
+```
+
+If `git status` in step 1 lists changed files, the Pi was running code that differs from `main`. Check them with
+`git diff` before going on: the first deploy will replace them.
+
+If you change `jarvis-deploy.service` or `.timer` later, the deploy updates the files in `~/jarvis`, but systemd
+keeps using its copies. Repeat step 3's `cp` and `daemon-reload`.
 
 ### Python on the Pi
 

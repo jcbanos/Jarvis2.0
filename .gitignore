@@ -12,3 +12,9 @@ __pycache__/
 
 # Local record of webhook deliveries already handled
 *.sqlite3
+
+# On the Pi: the automatic deploy's memory of a failed commit, and its lock
+.deploy-state
+.deploy.lock
+# On the Pi: old venvs kept as a backup, like .venv-3.13
+.venv-*/
