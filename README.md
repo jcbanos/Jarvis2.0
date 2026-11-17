@@ -184,7 +184,7 @@ or `gh workflow run CI --ref main`.
 
 | Check | What it does | Run it on your Mac first |
 |---|---|---|
-| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml`. actionlint checks `ci.yml` itself for mistakes, including its shell scripts. `systemd-analyze verify` checks the service and timer files in `deploy/` for typos. `scripts/deploy.py` is loaded with an older Python, since the Pi runs it with its system Python 3.13 | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting). `actionlint` (install with `brew install actionlint shellcheck`). The service files and the older-Python check can only be run on Linux |
+| Lint | Ruff checks for common mistakes and that the code is formatted. Settings are in `ruff.toml`. actionlint checks `ci.yml` itself for mistakes, including its shell scripts. `systemd-analyze verify` checks the service and timer files in `deploy/` for typos | `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` (`.venv/bin/ruff format .` fixes formatting). `actionlint` (install with `brew install actionlint shellcheck`). The service files can only be checked on Linux |
 | Commits | Every commit on the branch that isn't on `main` follows [templates/git/commit.txt](templates/git/commit.txt). Merge commits and `main` itself are skipped | `.venv/bin/python scripts/check_commits.py` |
 | Secrets | gitleaks scans the whole git history for API keys, tokens and passwords. Allowed test values are in `.gitleaks.toml` | `gitleaks git --redact .` (install with `brew install gitleaks`) |
 | Audit | pip-audit checks the libraries in `requirements.txt`, and the ones they bring in, for known security holes | `.venv/bin/pip-audit -r requirements.txt` |
@@ -315,7 +315,9 @@ Jarvis runs on **Python 3.14**, the same as the Mac. Debian on the Pi only ships
 ssh jarvis '~/.local/bin/uv python upgrade 3.14'
 ```
 
-The venv uses whatever 3.14 patch release uv has, so a restart picks up the upgrade.
+The venv uses whatever 3.14 patch release uv has, so a restart picks up the upgrade. The daily deploy runs with the
+same Python through `~/.local/bin/python3.14`, but outside the venv, so it can still go back if the venv breaks.
+Moving to a new version such as 3.15 means also changing that path in `deploy/jarvis-deploy.service`.
 
 To rebuild the venv, for example when moving to a new Python version (Jarvis is down for about 30 seconds):
 

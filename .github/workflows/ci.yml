@@ -71,14 +71,14 @@ jobs:
       # A typo in a service file would otherwise only show on the Pi, often
       # silently: systemd skips a line it can't read and starts without it.
       # systemd checks that the program in ExecStart exists, so first put a
-      # stand-in at that path, read from the file itself. jarvis-deploy uses
-      # /usr/bin/python3, which the runner already has.
+      # stand-in at each one's path, read from the files themselves.
       - name: Check the service files
         run: |
-          program=$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' deploy/jarvis.service)
-          sudo mkdir -p "$(dirname "$program")"
-          printf '#!/bin/sh\n' | sudo tee "$program" >/dev/null
-          sudo chmod +x "$program"
+          sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' deploy/*.service | while read -r program; do
+            sudo mkdir -p "$(dirname "$program")"
+            printf '#!/bin/sh\n' | sudo tee "$program" >/dev/null
+            sudo chmod +x "$program"
+          done
           # For a line it can't read, verify only warns ("ignoring") and still
           # succeeds. Correct files produce no output, so fail on any. verify
           # also loads the runner's own units, whose warnings aren't ours to
@@ -90,15 +90,6 @@ jobs:
             echo "::error file=deploy/jarvis.service::systemd-analyze found problems in deploy/ (see above)"
             exit 1
           fi
-
-      # The deploy runs with the Pi's system Python (3.13), not the 3.14 used
-      # everywhere else, and Ruff happily rewrites code into 3.14-only syntax.
-      # Loading it with the runner's own older Python catches that. -I ignores
-      # the project folder, so only the standard library can be imported.
-      - name: Check deploy.py runs on older Python
-        run: |
-          /usr/bin/python3 --version
-          /usr/bin/python3 -I -c 'import runpy; runpy.run_path("scripts/deploy.py", run_name="check")'
 
   commits:
     name: Commits

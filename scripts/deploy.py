@@ -12,8 +12,9 @@ The jarvis-deploy timer runs this once a day at 13:00 on the Pi
 5. If anything fails, it goes back to the previous commit, restarts if needed,
    and sends ❌ to your phone. On success it sends ✅.
 
-Only the standard library is used, so the Pi's system Python can run it even
-if .venv is broken. To run it by hand on the Pi:
+It runs with uv's Python 3.14 (~/.local/bin/python3.14), not .venv's, and
+uses only the standard library, so it still works, and can go back, if .venv
+is broken. To run it by hand on the Pi:
 
     sudo systemctl start jarvis-deploy      # deploy now, without waiting for 13:00
     journalctl -u jarvis-deploy -n 50       # what it did
@@ -48,13 +49,6 @@ Poster = Callable[[str, bytes], None]  # sends a JSON body; raises OSError on fa
 
 class DeployError(Exception):
     """A command that must succeed, such as git fetch, failed."""
-
-
-# The errors to catch, named here rather than written as "except (A, B):".
-# Ruff, set for Python 3.14, rewrites that to "except A, B:", which the Pi's
-# system Python (3.13) can't read. CI checks this file parses on older Python.
-READ_ERRORS = (OSError, ValueError)  # a missing or garbled file or answer
-CHECK_ERRORS = (DeployError, OSError, ValueError, KeyError)  # no network, or GitHub answered oddly
 
 
 def log(message: str) -> None:
@@ -138,7 +132,7 @@ class Deploy:
     def rejected(self) -> str:
         try:
             return json.loads((self.root / STATE_FILE).read_text()).get("rejected", "")
-        except READ_ERRORS:
+        except OSError, ValueError:  # a missing or garbled file or answer
             return ""
 
     def reject(self, sha: str) -> None:
@@ -173,8 +167,8 @@ class Deploy:
             try:
                 if json.loads(self.get(HEALTH_URL)).get("status") == "ok":
                     return True
-            except READ_ERRORS:
-                pass  # not up yet
+            except OSError, ValueError:
+                pass  # not up yet, or not answering properly yet
             if time.monotonic() >= deadline:
                 return False
             self.sleep(2)
@@ -270,7 +264,7 @@ def main(deploy: Deploy | None = None) -> int:
             return 0
         try:
             log(deploy())
-        except CHECK_ERRORS as error:
+        except (DeployError, OSError, ValueError, KeyError) as error:
             # Usually no network. Logged only: the timer tries again tomorrow.
             log(f"Couldn't check for updates: {error}")
             return 1

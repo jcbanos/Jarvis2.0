@@ -23,7 +23,9 @@ Type=oneshot
 # in deploy/sudoers-jarvis-deploy, and nothing else is.
 User=jcbanos
 WorkingDirectory=/home/jcbanos/jarvis
-# The Pi's system Python, not .venv, so a broken .venv can't stop a rollback.
-ExecStart=/usr/bin/python3 /home/jcbanos/jarvis/scripts/deploy.py
+# uv's Python 3.14, the same version as everywhere else, but not .venv's, so a
+# broken .venv can't stop a rollback. It's a stable link that survives
+# "uv python upgrade". Not /usr/bin/python3, which is Debian's older 3.13.
+ExecStart=/home/jcbanos/.local/bin/python3.14 /home/jcbanos/jarvis/scripts/deploy.py
 # Waiting for CI (up to 15 min), installing libraries and the tests fit easily.
 TimeoutStartSec=30min
