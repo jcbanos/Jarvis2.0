@@ -65,7 +65,8 @@ def jarvis(monkeypatch, tmp_path):
         return f"Answer to: {question}"
 
     monkeypatch.setattr(app_module, "answer", fake_answer)
-    monkeypatch.setattr(app_module.notify, "send", lambda message, title="Jarvis": sent.append(message))
+    # **options accepts title, actions and click, which these tests don't check.
+    monkeypatch.setattr(app_module.notify, "send", lambda message, **options: sent.append(message))
     return TestClient(app_module.app), asked, sent
 
 
@@ -216,7 +217,7 @@ def test_unexpected_send_error_logs_only_its_type(jarvis, monkeypatch, caplog):
     client, _, _ = jarvis
     caplog.set_level(logging.INFO)
 
-    def broken_send(message, title="Jarvis"):
+    def broken_send(message, **options):
         raise RuntimeError(f"something broke at https://ntfy.sh/{NTFY_TOPIC}")
 
     monkeypatch.setattr(app_module.notify, "send", broken_send)

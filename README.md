@@ -2,7 +2,7 @@
 
 A voice agent you talk to through a **Pebble Index 01** ring. Double-click and hold the ring, ask a question, and the answer arrives on your phone and Garmin watch a few seconds later.
 
-It's built to grow: web search is the first ability, and new ones are Python functions added to a list.
+It's built to grow: its abilities are web search and [turning ideas into GitHub issues](#ideas-by-voice), and new ones are Python functions added to a list.
 
 ## How it works
 
@@ -42,16 +42,18 @@ flowchart TB
     Funnel["Tailscale Funnel<br/>public HTTPS address"]
 
     subgraph pi["Raspberry Pi 5: systemd service 'jarvis'"]
-        App["app.py<br/>/webhook and /health"]
+        App["app.py<br/>/webhook, /ideas/confirm and /health"]
         Security["security.py<br/>check signature and age"]
-        Dedupe[("dedupe.py<br/>deliveries.sqlite3")]
+        Dedupe[("dedupe.py + drafts.py<br/>deliveries.sqlite3")]
         Agent["agent.py<br/>LangChain agent"]
         Notify["notify.py"]
+        GitHubPy["github.py"]
     end
 
     subgraph cloud["Internet services"]
         Claude["Anthropic API<br/>Sonnet 5.5 + web search"]
         Ntfy["ntfy.sh"]
+        GitHub["GitHub<br/>issues"]
     end
 
     Mac["Your Mac<br/>ssh jarvis, rsync updates"]
@@ -68,10 +70,13 @@ flowchart TB
     Ntfy --> NtfyApp
     NtfyApp --> GarminConnect
     GarminConnect -->|Bluetooth| Watch
+    NtfyApp -.->|"tap Create issue:<br/>POST /ideas/confirm"| Funnel
+    App -.->|confirmed idea| GitHubPy
+    GitHubPy -.->|token| GitHub
     Mac -.->|"Tailscale, private"| pi
 ```
 
-The solid arrows are one question's journey. The dotted arrow is how you maintain the Pi. Only `/webhook` and `/health` are reachable from the internet. The Mac's SSH access goes over Tailscale's private network and isn't public.
+The solid arrows are one question's journey. The dotted arrows are an idea's last step, when you tap **Create issue**, and how you maintain the Pi. Only `/webhook`, `/ideas/confirm` and `/health` are reachable from the internet. The Mac's SSH access goes over Tailscale's private network and isn't public.
 
 ## The code
 
@@ -82,8 +87,11 @@ The solid arrows are one question's journey. The dotted arrow is how you maintai
 | `jarvis/dedupe.py` | Remembers handled recordings in `deliveries.sqlite3`, so repeats are ignored |
 | `jarvis/agent.py` | **The only LangChain part.** `answer(question)` takes text in and returns text out |
 | `jarvis/tools/__init__.py` | Jarvis's abilities: the `TOOLS` list |
-| `jarvis/notify.py` | Sends text to your phone through ntfy |
-| `tests/` | 59 automated tests. They fake Claude and ntfy, so they cost nothing |
+| `jarvis/tools/ideas.py` | The `propose_issue` ability: drafts an issue and sends it to your phone to confirm |
+| `jarvis/drafts.py` | Keeps idea drafts until you confirm them, under one-time codes |
+| `jarvis/github.py` | Creates a GitHub issue once you've confirmed an idea |
+| `jarvis/notify.py` | Sends text to your phone through ntfy, with optional buttons and links |
+| `tests/` | 95 automated tests. They fake Claude, ntfy and GitHub, so they cost nothing |
 | `scripts/send_test_request.py` | Acts as the Pebble app, for testing without the ring |
 | `deploy/jarvis.service` | Keeps Jarvis running on the Pi |
 
@@ -114,7 +122,29 @@ def get_room_temperature(room: str) -> str:
     return read_sensor(room)  # your code here
 ```
 
-**Safety rule:** Claude reads web pages, and a page could contain text written to trick it into using your tools. **Any tool that does something** (sends, buys, deletes, switches on) should ask you to confirm before acting.
+**Safety rule:** Claude reads web pages, and a page could contain text written to trick it into using your tools. **Any tool that does something** (sends, buys, deletes, switches on) should ask you to confirm before acting. `propose_issue` shows one way: the tool only drafts, and a button on your phone does the rest.
+
+## Ideas by voice
+
+Say an idea for Jarvis to the ring, such as *"New idea: Jarvis should tell me when my train is late"*, and it becomes an issue in this repo.
+
+1. Claude turns what you said into a short title and description, fixing misheard words, and calls `propose_issue`.
+2. Your phone gets a **New idea - tap to publish** notification with the exact text and a **Create issue** button. Jarvis's reply says the draft is waiting.
+3. Tap **Create issue**. A moment later, **Created #31: …** arrives. Tap it to open the issue.
+
+**Nothing is published until you tap.** The repo is public, so read the draft first. Not tapping is a "no", and the draft expires after 24 hours. Each button works once.
+
+The button carries a random one-time code, and `/ideas/confirm` creates the issue only for a code it handed out. A web page that tricks Claude into calling `propose_issue` can only send you a draft to ignore.
+
+### Creating the GitHub token
+
+1. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. **Expiration:** up to a year. Put a reminder in your calendar to replace it.
+3. **Repository access:** **Only select repositories**, then pick `Jarvis2.0`.
+4. **Permissions → Repository permissions → Issues:** **Read and write**. Leave everything else at **No access**. GitHub adds **Metadata: Read** by itself.
+5. Copy the token into `GITHUB_TOKEN` in `.env` on the Pi, set `GITHUB_REPO` and `JARVIS_PUBLIC_URL` (see [Settings](#settings)), and restart Jarvis.
+
+The token can only open, edit and close issues in this one repo. It can't touch the code.
 
 ## Day-to-day commands
 
@@ -249,6 +279,9 @@ If it fails, put the old one back with `rm -rf .venv && mv .venv-old .venv` and 
 | `JARVIS_MODEL` | Which Claude model to use. Currently `claude-sonnet-5-5` |
 | `NTFY_TOPIC` | Your private ntfy topic. Anyone who knows it can read your answers |
 | `WEBHOOK_SECRET` | Shared with the Pebble app, which signs each request with it |
+| `GITHUB_TOKEN` | Creates issues from your ideas. A fine-grained token for this repo, with Issues access only ([how to create it](#creating-the-github-token)) |
+| `GITHUB_REPO` | The repo ideas go to, as `owner/name`. Currently `jcbanos/Jarvis2.0` |
+| `JARVIS_PUBLIC_URL` | The Pi's public address, `https://jarvis.<tailnet>.ts.net`, without `/webhook`. The **Create issue** button calls it |
 
 `.env.example` lists the same settings with blank values.
 
@@ -271,17 +304,19 @@ Measured on real questions with Sonnet 5.5:
 |---|---|---|
 | Needs a web search | about 20,000 | 5 cents |
 | Answered without searching | about 6,000 | 1 cent |
+| An idea (drafting the issue) | about 13,000 | 2 cents |
 
-Even a question with no search sends about 6,000 tokens, because describing the search tool to Claude takes that much. Check real spending on the Console's **Usage** and **Cost** pages, and keep a monthly spend limit set there.
+Even a question with no search sends about 6,000 tokens, because describing the search tool to Claude takes that much. The rows above were measured before `propose_issue` existed, and describing it adds about 2,000 tokens to every question: a weather question measured 22,000 with it. An idea takes two calls to Claude, one to draft it and one to write the reply after the tool runs. Check real spending on the Console's **Usage** and **Cost** pages, and keep a monthly spend limit set there.
 
 ## Security
 
 - **Signatures:** anything not signed with your secret gets `401 unauthorized`. Requests older than 5 minutes are rejected too, so a recorded request can't be replayed.
-- **Only two addresses exist,** `/health` and `/webhook`. Automated scanners find every new public address within minutes and try paths like `/.env`. They all get `404`, and you'll see them in the log. That's normal.
+- **Only three addresses exist,** `/health`, `/webhook` and `/ideas/confirm`. Automated scanners find every new public address within minutes and try paths like `/.env`. They all get `404`, and you'll see them in the log. That's normal.
+- **`/ideas/confirm`** needs no signature. Its proof is the one-time code from the button: 32 random bytes, valid for 24 hours, used once. Only its fingerprint (SHA-256) is stored, so even a copy of `deliveries.sqlite3` can't confirm a draft. A wrong code gets `404` and `unknown idea code` in the log.
 - **The log** (`journalctl -u jarvis`) holds the first 40 characters of each question, token use, rejected requests
-  and errors. It never holds the ntfy topic, the webhook secret or the API key, and tests check this.
+  and errors. It never holds the ntfy topic, the webhook secret, the API key, the GitHub token or an idea's code, and tests check this.
 - **The service runs as your user,** can't gain admin rights, and can only write inside `~/jarvis`.
-- **If a secret leaks:** for the webhook secret, generate a new one, put it in `.env` on the Pi and in the Pebble app, and restart Jarvis. For the API key, delete it in the Console and create a new one. For the ntfy topic, pick a new random name, update `.env`, and resubscribe on your phone.
+- **If a secret leaks:** for the webhook secret, generate a new one, put it in `.env` on the Pi and in the Pebble app, and restart Jarvis. For the API key, delete it in the Console and create a new one. For the ntfy topic, pick a new random name, update `.env`, and resubscribe on your phone. Anyone who read the topic could also have seen unconfirmed idea drafts and their codes, so the new topic also protects drafts. For the GitHub token, delete it on GitHub's Fine-grained tokens page, create a new one, update `.env`, and restart Jarvis.
 
 ## Troubleshooting
 
@@ -296,3 +331,7 @@ Even a question with no search sends about 6,000 tokens, because describing the 
 | Answer on phone but not watch | Garmin Connect needs **Notification access**, and ntfy must be on in its app list |
 | Can't reach the Pi from the Mac | Check the Tailscale app on the Mac is connected, then try `ssh jarvis` again |
 | Nothing on the Garmin | It may be in sleep mode or Do Not Disturb. Answers still arrive on the phone |
+| Tapping **Create issue** does nothing | `JARVIS_PUBLIC_URL` is wrong or missing in `.env`, or the Pi isn't reachable. Check `/health` in a browser |
+| Log says `unknown idea code` | The button was tapped twice, the draft is over 24 hours old, or something tried a made-up code |
+| "Couldn't create the issue: …" | The log says why. `GitHub replied 401`: the token expired or was mistyped. `403`: it lacks Issues access. `404`: `GITHUB_REPO` is wrong, or the token isn't for that repo |
+| An idea was answered like a question, with no draft | Claude didn't recognise it as an idea. Start with "New idea:" |

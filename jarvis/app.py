@@ -5,6 +5,7 @@ This file only coordinates. Each job lives in its own module:
     dedupe            have we handled this recording already?
     agent.answer      ask Claude (the only LangChain part)
     notify.send       push the answer to your phone
+    github            create an idea's issue, once you've confirmed it
 
 Run it on your Mac from the project folder:
     .venv/bin/uvicorn jarvis.app:app --port 8000
@@ -16,10 +17,11 @@ import os
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
-from jarvis import notify
+from jarvis import github, notify
 from jarvis.agent import answer
 from jarvis.dedupe import DeliveryLog
 from jarvis.security import InvalidRequest, verify
+from jarvis.tools import ideas
 
 load_dotenv()
 
@@ -52,15 +54,25 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/webhook")
-async def webhook(request: Request, background: BackgroundTasks):
-    # 1. Size check, before reading the whole body.
+async def _read_body(request: Request) -> bytes:
+    """The request body, refusing anything over MAX_BODY_BYTES.
+
+    The declared size is checked before reading, and the real size after,
+    since a sender can lie about the first.
+    """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise HTTPException(status_code=413, detail="too large")
     body = await request.body()
     if len(body) > MAX_BODY_BYTES:
         raise HTTPException(status_code=413, detail="too large")
+    return body
+
+
+@app.post("/webhook")
+async def webhook(request: Request, background: BackgroundTasks):
+    # 1. Size check, before reading the whole body.
+    body = await _read_body(request)
 
     # 2. Is it genuinely from your Pebble app? Uses the raw bytes, unparsed.
     try:
@@ -98,6 +110,43 @@ async def webhook(request: Request, background: BackgroundTasks):
     return {"status": "accepted"}
 
 
+@app.post("/ideas/confirm")
+async def confirm_idea(request: Request, background: BackgroundTasks):
+    """Your phone calls this when you tap "Create issue" on an idea's draft.
+
+    The body is the draft's one-time code, which only that notification holds.
+    There's no signature check: the code itself is the proof, since it's
+    impossible to guess and works once.
+    """
+    code = (await _read_body(request)).decode("utf-8", errors="replace").strip()
+
+    # Unknown, already used or expired all look the same from outside.
+    draft = ideas.drafts.take(code)
+    if draft is None:
+        log.warning("unknown idea code")  # never log the code itself
+        raise HTTPException(status_code=404, detail="not found")
+
+    log.info("idea confirmed")
+    background.add_task(publish_idea, *draft)
+    return {"status": "creating"}
+
+
+# Added under each issue, so it's clear where it came from.
+IDEA_FOOTER = "\n\n---\n_Spoken to Jarvis and confirmed on the phone._"
+
+
+def publish_idea(title: str, description: str) -> None:
+    """Runs in the background: create the issue, then tell you how it went."""
+    try:
+        number, url = github.create_issue(title, description + IDEA_FOOTER)
+    except github.GitHubError as problem:
+        log.error("could not create the issue: %s", problem)
+        _send_safely(f"Couldn't create the issue: {title}")
+        return
+    log.info("idea published as issue #%d", number)
+    _send_safely(f"Created #{number}: {title}", click=url)
+
+
 def handle_question(question: str) -> None:
     """Runs in the background: answer, then notify. Never fails silently."""
     try:
@@ -115,9 +164,9 @@ def _preview(question: str) -> str:
     return f"{shown!r} ({len(question)} chars)"
 
 
-def _send_safely(message: str) -> None:
+def _send_safely(message: str, click: str | None = None) -> None:
     try:
-        notify.send(message)
+        notify.send(message, click=click)
     except notify.NotifyError as problem:
         log.error("could not send notification: %s", problem)
     except Exception as problem:
