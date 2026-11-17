@@ -2,11 +2,11 @@
 # often, so upgrade on purpose rather than by accident.
 
 # --- The agent ---
-langchain==1.4.9            # create_agent: the loop connecting the model and tools
+langchain==1.5.0            # create_agent: the loop connecting the model and tools
 langchain-anthropic==1.7.10 # ChatAnthropic: LangChain's connection to Claude
 
 # --- Receiving the webhook from the Pebble app ---
-fastapi==0.162.0            # defines the web endpoints, such as POST /webhook
+fastapi==0.163.0            # defines the web endpoints, such as POST /webhook
 uvicorn==0.54.0             # the server that runs FastAPI and listens for requests
 python-multipart==0.0.33    # lets FastAPI read the form format the Pebble app sends
 
@@ -16,7 +16,7 @@ python-dotenv==1.2.4        # loads secrets from the .env file
 
 # --- Development only ---
 pytest==9.2.0               # runs our automated tests
-ruff==0.17.4                # checks code style and finds common mistakes
+ruff==0.17.5                # checks code style and finds common mistakes
 pip-audit==2.10.1           # checks these libraries for known security holes
 mypy==2.4.1                 # checks the code matches its type hints
 pytest-cov==7.1.0           # measures which lines the tests run
