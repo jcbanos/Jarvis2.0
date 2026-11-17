@@ -1,0 +1,29 @@
+# The automatic deploy: runs scripts/deploy.py once, then exits.
+#
+# jarvis-deploy.timer starts it every day at 13:00. This is a separate service
+# from jarvis.service, so when the script restarts Jarvis, the script itself
+# keeps running and can check /health afterwards.
+#
+# Not enabled on its own: enable the timer instead (see jarvis-deploy.timer).
+#
+# Useful commands:
+#   sudo systemctl start jarvis-deploy     deploy now
+#   journalctl -u jarvis-deploy -n 50      what the last deploys did
+
+[Unit]
+Description=Deploy the latest main to Jarvis, if CI passed
+# It fetches from GitHub, so wait for the network.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Run once and exit, unlike Jarvis, which keeps running.
+Type=oneshot
+# Your normal user, never root. Restarting Jarvis is allowed by the sudo rule
+# in deploy/sudoers-jarvis-deploy, and nothing else is.
+User=jcbanos
+WorkingDirectory=/home/jcbanos/jarvis
+# The Pi's system Python, not .venv, so a broken .venv can't stop a rollback.
+ExecStart=/usr/bin/python3 /home/jcbanos/jarvis/scripts/deploy.py
+# Waiting for CI (up to 15 min), installing libraries and the tests fit easily.
+TimeoutStartSec=30min
