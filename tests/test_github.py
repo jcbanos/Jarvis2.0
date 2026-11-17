@@ -61,7 +61,8 @@ def test_rejection_hides_the_token(fake_github, caplog, status):
     with pytest.raises(github.GitHubError) as error:
         github.create_issue("t", "b")
     assert str(error.value) == f"GitHub replied {status}"
-    assert error.value.__suppress_context__  # `from None` dropped httpx's error
+    # Only `from None` gives both: no cause, and the original hidden from tracebacks.
+    assert error.value.__cause__ is None and error.value.__suppress_context__
     assert TOKEN not in caplog.text
 
 

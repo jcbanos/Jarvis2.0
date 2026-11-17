@@ -36,8 +36,9 @@ def create_issue(title: str, body: str) -> tuple[int, str]:
             timeout=10,
         )
         response.raise_for_status()
-    # Some httpx errors carry the request, headers and token included. Replace
-    # them with a short description, and `from None` drops the original.
+    # httpx's messages name the URL but not the headers, so the token isn't in
+    # them today. As in notify.py, replace them with a short description
+    # anyway, and `from None` hides the original from tracebacks in the log.
     except httpx.HTTPStatusError as error:
         raise GitHubError(f"GitHub replied {error.response.status_code}") from None
     except httpx.HTTPError as error:
