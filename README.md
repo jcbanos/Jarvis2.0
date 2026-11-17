@@ -230,8 +230,10 @@ Each run takes about a minute. Actions minutes are free and unlimited for public
 From the `Jarvis2.0` folder on your Mac:
 
 ```bash
-# 1. Copy changes across (only what changed is sent)
-rsync -a --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
+# 1. Copy changes across (only what changed is sent). Add --dry-run --itemize-changes
+#    first to list what would be copied without copying anything.
+rsync -a --exclude '.env' --exclude '.vscode/' \
+      --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
       --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude '.coverage' \
       --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' \
       ./ jarvis:~/jarvis/
@@ -242,6 +244,10 @@ ssh jarvis 'cd ~/jarvis && .venv/bin/pip install -r requirements.txt'
 # 3. Restart Jarvis (asks for your Pi password)
 ssh -t jarvis 'sudo systemctl restart jarvis'
 ```
+
+**`.env` is never copied.** The Pi's `.env` has settings the Mac's doesn't, such as `GITHUB_TOKEN`, so copying it
+would erase them. To change a setting on the Pi, edit it there with `ssh -t jarvis 'nano ~/jarvis/.env'`, then
+restart. `.vscode/` holds your editor's settings, which the Pi doesn't need.
 
 ### Python on the Pi
 
