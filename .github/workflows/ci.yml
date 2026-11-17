@@ -74,7 +74,7 @@ jobs:
       # stand-in at each one's path, read from the files themselves.
       - name: Check the service files
         run: |
-          for program in $(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' deploy/*.service); do
+          sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' deploy/*.service | while read -r program; do
             sudo mkdir -p "$(dirname "$program")"
             printf '#!/bin/sh\n' | sudo tee "$program" >/dev/null
             sudo chmod +x "$program"
