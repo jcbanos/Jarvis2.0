@@ -84,7 +84,8 @@ jobs:
           # also loads the runner's own units, whose warnings aren't ours to
           # fix, so keep only the lines that name ours.
           problems=$(systemd-analyze verify deploy/jarvis.service deploy/jarvis-deploy.service \
-                       deploy/jarvis-deploy.timer 2>&1 | grep -F 'jarvis') || true
+                       deploy/jarvis-deploy.timer deploy/jarvis-german-reminder.service \
+                       deploy/jarvis-german-reminder.timer 2>&1 | grep -F 'jarvis') || true
           if [ -n "$problems" ]; then
             echo "$problems"
             echo "::error file=deploy/jarvis.service::systemd-analyze found problems in deploy/ (see above)"

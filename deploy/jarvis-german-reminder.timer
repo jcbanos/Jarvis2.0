@@ -1,0 +1,24 @@
+# Runs jarvis-german-reminder.service once a day at 20:00.
+#
+# The time is the Pi's local time (timedatectl shows its time zone).
+#
+# Install with jarvis-german-reminder.service, as in the README's German practice section:
+#   sudo cp ~/jarvis/deploy/jarvis-german-reminder.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis-german-reminder.timer
+#
+# Useful commands:
+#   systemctl list-timers jarvis-german-reminder    when it runs next, and when it last ran
+#   sudo systemctl start jarvis-german-reminder     send the reminder now
+
+[Unit]
+Description=Remind you to record a German voice note at 20:00
+
+[Timer]
+OnCalendar=*-*-* 20:00:00
+# No Persistent=true, unlike the deploy timer. If the Pi was off at 20:00, the
+# reminder is skipped, rather than arriving whenever the Pi is back on, such
+# as at 3 am.
+
+[Install]
+WantedBy=timers.target
