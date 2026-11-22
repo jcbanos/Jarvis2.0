@@ -13,6 +13,9 @@ __pycache__/
 # Local record of webhook deliveries already handled
 *.sqlite3
 
+# The Pi's copy of your Anki collection (scripts/anki_login.py)
+anki/
+
 # On the Pi: the automatic deploy's memory of a failed commit, and its lock
 .deploy-state
 .deploy.lock

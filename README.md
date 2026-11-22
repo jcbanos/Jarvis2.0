@@ -2,7 +2,7 @@
 
 A voice agent you talk to through a **Pebble Index 01** ring. Double-click and hold the ring, ask a question, and the answer arrives on your phone and Garmin watch a few seconds later.
 
-It's built to grow: its abilities are web search, [turning ideas into GitHub issues](#ideas-by-voice) and [correcting your spoken German](#german-practice), and new ones are Python functions added to a list.
+It's built to grow: its abilities are web search, [turning ideas into GitHub issues](#ideas-by-voice), [correcting your spoken German](#german-practice) and [making Anki flashcards](#flashcards-by-voice), and new ones are Python functions added to a list.
 
 ## How it works
 
@@ -48,12 +48,14 @@ flowchart TB
         Agent["agent.py<br/>LangChain agent"]
         Notify["notify.py"]
         GitHubPy["github.py"]
+        AnkiPy[("anki_sync.py<br/>anki/collection.anki2")]
     end
 
     subgraph cloud["Internet services"]
         Claude["Anthropic API<br/>Sonnet 5.5 + web search"]
         Ntfy["ntfy.sh"]
         GitHub["GitHub<br/>issues and code"]
+        AnkiWeb["AnkiWeb<br/>syncs your decks"]
     end
 
     Mac["Your Mac<br/>ssh jarvis"]
@@ -73,6 +75,8 @@ flowchart TB
     NtfyApp -.->|"tap Create issue:<br/>POST /ideas/confirm"| Funnel
     App -.->|confirmed idea| GitHubPy
     GitHubPy -.->|token| GitHub
+    Agent -.->|"flashcard"| AnkiPy
+    AnkiPy <-.->|"sync key"| AnkiWeb
     Mac -.->|"Tailscale, private"| pi
     pi -.->|"daily 13:00: git fetch main"| GitHub
 ```
@@ -91,8 +95,11 @@ The solid arrows are one question's journey. The dotted arrows are an idea's las
 | `jarvis/tools/ideas.py` | The `propose_issue` ability: drafts an issue and sends it to your phone to confirm |
 | `jarvis/drafts.py` | Keeps idea drafts until you confirm them, under one-time codes |
 | `jarvis/github.py` | Creates a GitHub issue once you've confirmed an idea |
+| `jarvis/tools/flashcards.py` | The `add_flashcard` ability: adds a German word to Anki and sends it to your phone with an Undo button |
+| `jarvis/anki_sync.py` | **The only Anki part.** Adds and removes cards in the Pi's copy of your collection, and syncs it with AnkiWeb |
+| `scripts/anki_login.py` | One-time setup on the Pi: downloads your Anki collection and prints the sync key |
 | `jarvis/notify.py` | Sends text to your phone through ntfy, with optional buttons and links |
-| `tests/` | 120 automated tests. They fake Claude, ntfy, GitHub and the Pi's commands, so they cost nothing |
+| `tests/` | 159 automated tests. They fake Claude, ntfy, GitHub, AnkiWeb and the Pi's commands, so they cost nothing |
 | `scripts/send_test_request.py` | Acts as the Pebble app, for testing without the ring |
 | `scripts/deploy.py` | The daily deploy on the Pi: fetches `main`, checks CI passed, tests, restarts, goes back if anything fails |
 | `deploy/jarvis.service` | Keeps Jarvis running on the Pi |
@@ -181,6 +188,45 @@ Repeat the `cp` and `daemon-reload` if either file changes later.
 | When it runs next | `ssh jarvis 'systemctl list-timers jarvis-german-reminder'` |
 | Did the last reminders send? | `ssh jarvis 'journalctl -u jarvis-german-reminder -n 20'` |
 | Stop the reminders | `ssh -t jarvis 'sudo systemctl disable --now jarvis-german-reminder.timer'` |
+
+## Flashcards by voice
+
+Say *"Flashcard: Zuverlässigkeit"* or *"Add gehen to Anki"*, and the word goes into your **German-Jarvis** deck as
+two cards: German → English, and English → German.
+
+| Kind of word | Front | Also on the back |
+|---|---|---|
+| Noun | die Zuverlässigkeit | the plural, an example sentence and its translation |
+| Verb | gehen | **geht · ist gegangen** (3rd person and perfect, with its helper verb), an example |
+| Other | the word | a short grammar note, if any, and an example |
+
+Your phone gets **Flashcard added** with the whole card and an **Undo** button. Undo deletes both cards, and works
+once, within 24 hours. A word already in the deck isn't added again. Anki on the Mac and AnkiDroid get the card the
+next time they sync.
+
+**How it reaches Anki:** the Pi keeps its own copy of your collection in `~/jarvis/anki/`, and syncs it with AnkiWeb
+just like your other devices. It never does a **full upload**, which would replace everything on AnkiWeb, review
+history included. If AnkiWeb ever asks for a full sync, Jarvis adds nothing and says *"AnkiWeb wants a full sync"*.
+Sync the Mac first, then run the setup script with `--download`.
+
+Jarvis creates a note type called **Jarvis German** with the fields German, English, Forms, Example and Example
+(English). You can change how its cards look in Anki, but don't rename or reorder its fields: Jarvis checks them and
+stops if they change. Adding or removing fields or card types makes Anki ask for a full sync. After that, run
+`--download` on the Pi.
+
+### Setting up flashcards on the Pi
+
+Once, after the deploy that added flashcards. Run it while you're not using the ring:
+
+```bash
+ssh -t jarvis
+cd ~/jarvis
+.venv/bin/python scripts/anki_login.py    # asks for your AnkiWeb email and password, downloads your collection
+nano .env                                 # paste the ANKI_SYNC_KEY line it printed
+sudo systemctl restart jarvis
+```
+
+Your password is never saved. Only the sync key is kept, in `.env`.
 
 ## Day-to-day commands
 
@@ -286,7 +332,7 @@ no SSH key or Tailscale access.
 | When it runs next | `ssh jarvis 'systemctl list-timers jarvis-deploy'` |
 | Which commit is running | `ssh jarvis 'git -C ~/jarvis log -1 --oneline'` |
 
-**`.env`, `.venv/` and `deliveries.sqlite3` are never touched.** They aren't in git, and the deploy never deletes
+**`.env`, `.venv/`, `deliveries.sqlite3` and `anki/` are never touched.** They aren't in git, and the deploy never deletes
 files git doesn't know about. The Pi's `.env` has settings the Mac's doesn't, such as `GITHUB_TOKEN`. To change a
 setting, edit it on the Pi with `ssh -t jarvis 'nano ~/jarvis/.env'`, then restart Jarvis.
 
@@ -296,7 +342,7 @@ setting, edit it on the Pi with `ssh -t jarvis 'nano ~/jarvis/.env'`, then resta
 rsync -a --exclude '.env' --exclude '.vscode/' \
       --exclude '.venv/' --exclude '.venv-*/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
       --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude '.coverage' \
-      --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' --exclude '.deploy-*' \
+      --exclude '*.sqlite3' --exclude '.DS_Store' --exclude '.git/' --exclude '.deploy-*' --exclude 'anki/' \
       ./ jarvis:~/jarvis/
 ssh -t jarvis 'sudo systemctl restart jarvis'
 ```
@@ -377,7 +423,11 @@ If it fails, put the old one back with `rm -rf .venv && mv .venv-old .venv` and 
 | `WEBHOOK_SECRET` | Shared with the Pebble app, which signs each request with it |
 | `GITHUB_TOKEN` | Creates issues from your ideas. A fine-grained token for this repo, with Issues access only ([how to create it](#creating-the-github-token)) |
 | `GITHUB_REPO` | The repo ideas go to, as `owner/name`. Currently `jcbanos/Jarvis2.0` |
-| `JARVIS_PUBLIC_URL` | The Pi's public address, `https://jarvis.<tailnet>.ts.net`, without `/webhook`. The **Create issue** button calls it |
+| `JARVIS_PUBLIC_URL` | The Pi's public address, `https://jarvis.<tailnet>.ts.net`, without `/webhook`. The **Create issue** and **Undo** buttons call it |
+| `ANKI_SYNC_KEY` | Syncs flashcards with your AnkiWeb account. Printed by `scripts/anki_login.py`. Blank means local only |
+| `ANKI_SYNC_ENDPOINT` | Only if the setup script or the log names one. Usually blank |
+| `ANKI_DECK` | The deck flashcards go into. Currently `German-Jarvis` |
+| `ANKI_COLLECTION` | Where the Pi's copy of your collection lives. Blank means `anki/collection.anki2` |
 
 `.env.example` lists the same settings with blank values.
 
@@ -401,18 +451,21 @@ Measured on real questions with Sonnet 5.5:
 | Needs a web search | about 20,000 | 5 cents |
 | Answered without searching | about 6,000 | 1 cent |
 | An idea (drafting the issue) | about 13,000 | 2 cents |
+| A flashcard (measured with all tools) | about 14,500 | 3 cents |
 
-Even a question with no search sends about 6,000 tokens, because describing the search tool to Claude takes that much. The rows above were measured before `propose_issue` existed, and describing it adds about 2,000 tokens to every question: a weather question measured 22,000 with it. An idea takes two calls to Claude, one to draft it and one to write the reply after the tool runs. Check real spending on the Console's **Usage** and **Cost** pages, and keep a monthly spend limit set there.
+Even a question with no search sends about 6,000 tokens, because describing the search tool to Claude takes that much. The rows above were measured before `propose_issue` existed, and describing it adds about 2,000 tokens to every question: a weather question measured 22,000 with it. Describing `add_flashcard` adds about 500 more: a question without a search measured 7,200 with every tool. An idea takes two calls to Claude, one to draft it and one to write the reply after the tool runs. Check real spending on the Console's **Usage** and **Cost** pages, and keep a monthly spend limit set there.
 
 ## Security
 
 - **Signatures:** anything not signed with your secret gets `401 unauthorized`. Requests older than 5 minutes are rejected too, so a recorded request can't be replayed.
-- **Only three addresses exist,** `/health`, `/webhook` and `/ideas/confirm`. Automated scanners find every new public address within minutes and try paths like `/.env`. They all get `404`, and you'll see them in the log. That's normal.
-- **`/ideas/confirm`** needs no signature. Its proof is the one-time code from the button: 32 random bytes, valid for 24 hours, used once. Only its fingerprint (SHA-256) is stored, so even a copy of `deliveries.sqlite3` can't confirm a draft. A wrong code gets `404` and `unknown idea code` in the log.
+- **Only four addresses exist,** `/health`, `/webhook`, `/ideas/confirm` and `/flashcards/undo`. Automated scanners find every new public address within minutes and try paths like `/.env`. They all get `404`, and you'll see them in the log. That's normal.
+- **`/ideas/confirm`** needs no signature. Its proof is the one-time code from the button: 32 random bytes, valid for 24 hours, used once. Only its fingerprint (SHA-256) is stored, so even a copy of `deliveries.sqlite3` can't confirm a draft. A wrong code gets `404` and `unknown idea code` in the log. **`/flashcards/undo`** works the same way, and `unknown undo code` is its log line.
+- **Flashcard text is shown as text.** It's escaped before it goes on a card, so text from a tricked Claude can't
+  put markup or scripts into Anki.
 - **The log** (`journalctl -u jarvis`) holds the first 40 characters of each question, token use, rejected requests
-  and errors. It never holds the ntfy topic, the webhook secret, the API key, the GitHub token or an idea's code, and tests check this.
+  and errors. It never holds the ntfy topic, the webhook secret, the API key, the GitHub token, the Anki sync key or a button's code, and tests check this.
 - **The service runs as your user,** can't gain admin rights, and can only write inside `~/jarvis`.
-- **If a secret leaks:** for the webhook secret, generate a new one, put it in `.env` on the Pi and in the Pebble app, and restart Jarvis. For the API key, delete it in the Console and create a new one. For the ntfy topic, pick a new random name, update `.env`, and resubscribe on your phone. Anyone who read the topic could also have seen unconfirmed idea drafts and their codes, so the new topic also protects drafts. For the GitHub token, delete it on GitHub's Fine-grained tokens page, create a new one, update `.env`, and restart Jarvis.
+- **If a secret leaks:** for the webhook secret, generate a new one, put it in `.env` on the Pi and in the Pebble app, and restart Jarvis. For the API key, delete it in the Console and create a new one. For the ntfy topic, pick a new random name, update `.env`, and resubscribe on your phone. Anyone who read the topic could also have seen unconfirmed idea drafts and their codes, so the new topic also protects drafts. For the GitHub token, delete it on GitHub's Fine-grained tokens page, create a new one, update `.env`, and restart Jarvis. For the Anki sync key, which works like your AnkiWeb password, change your AnkiWeb password at ankiweb.net. That should invalidate the old key. Then run `scripts/anki_login.py` again, update `.env`, restart Jarvis, and log in again on the Mac and phone.
 
 ## Troubleshooting
 
@@ -431,3 +484,7 @@ Even a question with no search sends about 6,000 tokens, because describing the 
 | Log says `unknown idea code` | The button was tapped twice, the draft is over 24 hours old, or something tried a made-up code |
 | "Couldn't create the issue: …" | The log says why. `GitHub replied 401`: the token expired or was mistyped. `403`: it lacks Issues access. `404`: `GITHUB_REPO` is wrong, or the token isn't for that repo |
 | An idea was answered like a question, with no draft | Claude didn't recognise it as an idea. Start with "New idea:" |
+| "The card was not added: AnkiWeb wants a full sync" | A note type was changed in Anki, or AnkiWeb was reset. Sync Anki on the Mac, then run `scripts/anki_login.py --download` on the Pi |
+| "The card was not added: AnkiWeb rejected the sync key" | The key is wrong, or your AnkiWeb password changed. Run `scripts/anki_login.py` again and update `.env` |
+| Card added, but not on the Mac or phone | Sync Anki there. If the notification said "Saved on the Pi", AnkiWeb wasn't reachable, and the card goes with the next flashcard's sync |
+| A flashcard request was corrected as German practice | Start with "Flashcard:" so Claude knows it's a card |

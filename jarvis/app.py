@@ -6,6 +6,7 @@ This file only coordinates. Each job lives in its own module:
     agent.answer      ask Claude (the only LangChain part)
     notify.send       push the answer to your phone
     github            create an idea's issue, once you've confirmed it
+    anki_sync         remove a flashcard, when you tap Undo
 
 Run it on your Mac from the project folder:
     .venv/bin/uvicorn jarvis.app:app --port 8000
@@ -17,11 +18,11 @@ import os
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
-from jarvis import github, notify
+from jarvis import anki_sync, github, notify
 from jarvis.agent import answer
 from jarvis.dedupe import DeliveryLog
 from jarvis.security import InvalidRequest, verify
-from jarvis.tools import ideas
+from jarvis.tools import flashcards, ideas
 
 load_dotenv()
 
@@ -129,6 +130,36 @@ async def confirm_idea(request: Request, background: BackgroundTasks):
     log.info("idea confirmed")
     background.add_task(publish_idea, *draft)
     return {"status": "creating"}
+
+
+@app.post("/flashcards/undo")
+async def undo_flashcard(request: Request, background: BackgroundTasks):
+    """Your phone calls this when you tap Undo on a "Flashcard added" notification.
+
+    Works like /ideas/confirm: the body is a one-time code, and the code is the proof.
+    """
+    code = (await _read_body(request)).decode("utf-8", errors="replace").strip()
+
+    entry = flashcards.undo_codes.take(code)
+    if entry is None:
+        log.warning("unknown undo code")  # never log the code itself
+        raise HTTPException(status_code=404, detail="not found")
+
+    log.info("flashcard undo requested")
+    background.add_task(remove_flashcard, *entry)
+    return {"status": "removing"}
+
+
+def remove_flashcard(note_id: int, word: str) -> None:
+    """Runs in the background: delete the card, then tell you how it went."""
+    try:
+        removed = anki_sync.remove_card(note_id)
+    except anki_sync.AnkiError as problem:
+        log.error("could not remove the flashcard: %s", problem)
+        _send_safely(f"Couldn't remove {word}: {problem}")
+        return
+    log.info("flashcard removed" if removed else "flashcard was already gone")
+    _send_safely(f"Removed: {word}" if removed else f"{word} was already gone from Anki")
 
 
 # Added under each issue, so it's clear where it came from.

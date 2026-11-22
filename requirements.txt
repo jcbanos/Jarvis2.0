@@ -14,6 +14,9 @@ python-multipart==0.0.33    # lets FastAPI read the form format the Pebble app s
 httpx==0.28.1               # makes the HTTP call to ntfy
 python-dotenv==1.2.4        # loads secrets from the .env file
 
+# --- Flashcards ---
+anki==26.9.4                # Anki's own library: edits the Pi's copy of your collection and syncs it with AnkiWeb
+
 # --- Development only ---
 pytest==9.2.0               # runs our automated tests
 ruff==0.17.5                # checks code style and finds common mistakes

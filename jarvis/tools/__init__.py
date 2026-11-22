@@ -16,6 +16,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from jarvis.tools.flashcards import add_flashcard
 from jarvis.tools.ideas import propose_issue
 
 # Claude's own web search, which runs on Anthropic's servers. It's a dict rather
@@ -24,5 +25,6 @@ from jarvis.tools.ideas import propose_issue
 WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
 
 # propose_issue only drafts. Creating the issue needs a tap on your phone.
+# add_flashcard acts at once, but its notification has an Undo button.
 # The type says the list may mix both kinds: dicts and @tool functions.
-TOOLS: list[BaseTool | dict[str, Any]] = [WEB_SEARCH, propose_issue]
+TOOLS: list[BaseTool | dict[str, Any]] = [WEB_SEARCH, propose_issue, add_flashcard]
