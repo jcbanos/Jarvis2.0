@@ -2,7 +2,7 @@
 
 A voice agent you talk to through a **Pebble Index 01** ring. Double-click and hold the ring, ask a question, and the answer arrives on your phone and Garmin watch a few seconds later.
 
-It's built to grow: its abilities are web search and [turning ideas into GitHub issues](#ideas-by-voice), and new ones are Python functions added to a list.
+It's built to grow: its abilities are web search, [turning ideas into GitHub issues](#ideas-by-voice) and [correcting your spoken German](#german-practice), and new ones are Python functions added to a list.
 
 ## How it works
 
@@ -97,6 +97,7 @@ The solid arrows are one question's journey. The dotted arrows are an idea's las
 | `scripts/deploy.py` | The daily deploy on the Pi: fetches `main`, checks CI passed, tests, restarts, goes back if anything fails |
 | `deploy/jarvis.service` | Keeps Jarvis running on the Pi |
 | `deploy/jarvis-deploy.timer` + `.service` | Run `scripts/deploy.py` every day at 13:00 |
+| `deploy/jarvis-german-reminder.timer` + `.service` | Send the [German practice](#german-practice) reminder every day at 20:00 |
 | `deploy/sudoers-jarvis-deploy` | Lets the deploy run `systemctl restart jarvis`, and nothing else, without your password |
 
 ### LangChain in one minute
@@ -149,6 +150,37 @@ The button carries a random one-time code, and `/ideas/confirm` creates the issu
 5. Copy the token into `GITHUB_TOKEN` in `.env` on the Pi, set `GITHUB_REPO` and `JARVIS_PUBLIC_URL` (see [Settings](#settings)), and restart Jarvis.
 
 The token can only open, edit and close issues in this one repo. It can't touch the code.
+
+## German practice
+
+Every day at 20:00, your phone gets **Zeit für deine deutsche Sprachnotiz!** Reply by recording a few sentences in
+German with the ring. Jarvis sends back the corrected text and a short English reason for each mistake.
+
+- **Anything you say in German counts as practice.** Jarvis corrects it rather than answering it, so ask real
+  questions in English or Spanish.
+- **Jarvis corrects the transcript, not your voice.** The Pebble app turns speech into text first and may smooth over
+  pronunciation or a wrong ending. Words that look misheard aren't marked as mistakes.
+- **Corrections can be longer than other answers.** Read them on the phone, since the Garmin may cut them off.
+
+The reminder is a systemd timer on the Pi, separate from Jarvis, that sends one ntfy message. If the Pi is off at
+20:00, that day's reminder is skipped. The daily deploy updates its files in `~/jarvis` but doesn't install them, so
+install it once (each `sudo` asks for your Pi password):
+
+```bash
+ssh -t jarvis
+sudo cp ~/jarvis/deploy/jarvis-german-reminder.service ~/jarvis/deploy/jarvis-german-reminder.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now jarvis-german-reminder.timer
+sudo systemctl start jarvis-german-reminder    # sends one now, to check
+```
+
+Repeat the `cp` and `daemon-reload` if either file changes later.
+
+| What | Command |
+|---|---|
+| When it runs next | `ssh jarvis 'systemctl list-timers jarvis-german-reminder'` |
+| Did the last reminders send? | `ssh jarvis 'journalctl -u jarvis-german-reminder -n 20'` |
+| Stop the reminders | `ssh -t jarvis 'sudo systemctl disable --now jarvis-german-reminder.timer'` |
 
 ## Day-to-day commands
 

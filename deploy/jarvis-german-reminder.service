@@ -1,0 +1,36 @@
+# The German practice reminder: sends one ntfy message, then exits.
+#
+# jarvis-german-reminder.timer starts it every day at 20:00. It only sends the
+# reminder. Your reply, a German voice note, goes to Jarvis like any other
+# recording, and Jarvis answers it with corrections.
+#
+# Not enabled on its own: enable the timer instead (see jarvis-german-reminder.timer).
+#
+# Useful commands:
+#   sudo systemctl start jarvis-german-reminder     send the reminder now
+#   journalctl -u jarvis-german-reminder -n 20      did the last ones send?
+
+[Unit]
+Description=Remind you to record a German voice note
+# It sends through ntfy, so wait for the network.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Run once and exit, unlike Jarvis, which keeps running.
+Type=oneshot
+# Your normal user, never root.
+User=jcbanos
+# jarvis.notify reads NTFY_TOPIC from the .env in this folder.
+WorkingDirectory=/home/jcbanos/jarvis
+# The venv's Python, because jarvis.notify needs Jarvis's libraries. The text is
+# the message body, which can hold umlauts. The title is plain "Jarvis".
+ExecStart=/home/jcbanos/jarvis/.venv/bin/python -m jarvis.notify "Zeit für deine deutsche Sprachnotiz! Erzähl mir in ein paar Sätzen von deinem Tag."
+# Sending takes a second or two. ntfy gives up after 10.
+TimeoutStartSec=1min
+
+# Safety locks, the same as jarvis.service. This one writes nothing at all.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
